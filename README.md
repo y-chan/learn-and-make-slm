@@ -1,0 +1,32 @@
+# Learn and Make SLM
+
+数学や理論的な背景を一旦抜きにして、工学的にTransformerやそのベースとなる基礎的なモジュールを学び、作ってみる。
+それらを組み合わせて、最終的に実際に動くSmall Language Modelを作ってみる。
+
+色々書いてある[Scrapbox](https://scrapbox.io/sushichan044-jam/Transformer%E3%82%92%E5%AE%9F%E8%A3%85%E3%81%97%E3%81%A6%E5%B0%91%E3%81%97%E7%90%86%E8%A7%A3%E3%81%97%E3%81%9F%E6%B0%97%E3%81%AB%E3%81%AA%E3%82%8B%E4%BC%9A)
+
+## 環境構築
+
+uvを使えばいい
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv sync
+```
+
+PyTorchだけはややこしいので、別途インストールする。(最初にPyTorchを入れた環境がM2 Macbook Airなので、多分Macbookの人は何もしなくても大丈夫)
+
+```bash
+uv pip install torch --torch-backend=auto
+```
+
+## 実行
+
+これで動くのが理想
+
+```bash
+uv run train.py
+```
+
+一応、各モジュールごとに動作確認できるようにしてある。

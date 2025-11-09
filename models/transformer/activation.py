@@ -8,7 +8,7 @@ def sigmoid(x: torch.Tensor) -> torch.Tensor:
 
 
 class Swish(torch.nn.Module):
-    def __init__(self, beta: float = 1.0, mark_beta_learnable: bool = False):
+    def __init__(self, beta: float = 1.0, beta_is_learnable: bool = False):
         """
         Implements Swish.
 
@@ -25,7 +25,7 @@ class Swish(torch.nn.Module):
             In the original paper, it was shown experimentally that even when beta is marked as a learnable parameter, it converges to a value close to 1.0, indicating that fixing it to 1.0 in practice causes no issues.
         """
         super().__init__()
-        if mark_beta_learnable:
+        if beta_is_learnable:
             self.beta = torch.nn.Parameter(torch.tensor(beta))
         else:
             self.beta = torch.tensor(beta)

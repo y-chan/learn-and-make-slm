@@ -6,8 +6,10 @@ class Softmax(nn.Module):
         super().__init__()
 
     def forward(self, x: Tensor) -> Tensor:
-        bottom = x.exp().sum(dim=-1, keepdim=True)
-        return x.exp() / bottom
+        # Subtract max for numerical stability
+        x_max = x.max(dim=-1, keepdim=True)[0]
+        x_exp = (x - x_max).exp()
+        return x_exp / x_exp.sum(dim=-1, keepdim=True)
 
 
 if __name__ == "__main__":

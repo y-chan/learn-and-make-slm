@@ -28,7 +28,7 @@ class Swish(torch.nn.Module):
         if beta_is_learnable:
             self.beta = torch.nn.Parameter(torch.tensor(beta))
         else:
-            self.beta = torch.tensor(beta)
+            self.register_buffer("beta", torch.tensor(beta))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x * sigmoid(self.beta * x)

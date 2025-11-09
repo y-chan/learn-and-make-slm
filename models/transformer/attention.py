@@ -9,10 +9,11 @@ class ScaledDotProductAttention(nn.Module):
         super().__init__()
         self.d_k = d_k
         self.softmax = Softmax()
+        self.scale = 1.0 / torch.sqrt(torch.tensor(d_k, dtype=torch.float32))
 
-    def forward(self, Q: Tensor, K: Tensor, V: Tensor, mask: bool = False) -> Tensor:
-        scores = (Q @ K.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.d_k, dtype=torch.float32))
-        scores = scores.masked_fill(mask, float('-inf')) if mask else scores
+    def forward(self, Q: Tensor, K: Tensor, V: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        scores = (Q @ K.transpose(-2, -1)) * self.scale
+        scores = scores.masked_fill(mask, float('-inf')) if mask is not None else scores
         attn_weights = self.softmax(scores)
         output = attn_weights @ V
         return output
@@ -28,7 +29,7 @@ class MultiHeadAttention(nn.Module):
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
 
-    def forward(self, x: Tensor, mask: bool = False) -> Tensor:
+    def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
         Q = self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)

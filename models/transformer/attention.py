@@ -13,7 +13,9 @@ class ScaledDotProductAttention(nn.Module):
 
     def forward(self, Q: Tensor, K: Tensor, V: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         scores = (Q @ K.transpose(-2, -1)) * self.scale
-        scores = scores.masked_fill(mask, float('-inf')) if mask is not None else scores
+        if mask is not None:
+            mask = mask.bool()
+            scores = scores.masked_fill(mask, float('-inf'))
         attn_weights = self.softmax(scores)
         output = attn_weights @ V
         return output
@@ -21,6 +23,8 @@ class ScaledDotProductAttention(nn.Module):
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int):
         super().__init__()
+        if d_model % n_heads != 0:
+            raise ValueError("d_model must be divisible by n_heads")
         self.d_model = d_model
         self.n_heads = n_heads
         self.linear_q = Linear(d_model, d_model)

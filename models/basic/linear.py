@@ -47,7 +47,7 @@ class Linear(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         # y = w * x + b
-        return x @ self.weight.t() + self.bias.t()
+        return x @ self.weight.T + self.bias
 
 
 if __name__ == "__main__":

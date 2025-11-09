@@ -6,16 +6,12 @@ class Embedding(nn.Module):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
+        self.one_hot_vec = torch.eye(num_embeddings)
         self.w = nn.Parameter(torch.randn(num_embeddings, embedding_dim))
 
     def forward(self, x: Tensor) -> Tensor:
-        one_hot = self.one_hot(x)
+        one_hot = self.one_hot_vec[x]
         return one_hot @ self.w
-    
-    def one_hot(self, x: Tensor) -> Tensor:
-        num_classes = self.num_embeddings
-        one_hot = torch.eye(num_classes)[x]
-        return one_hot.float()
 
 
 if __name__ == "__main__":

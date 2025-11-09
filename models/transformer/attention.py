@@ -2,6 +2,7 @@ from torch import nn, Tensor
 import torch
 from models.basic.softmax import Softmax
 from models.basic.linear import Linear
+from typing import Optional
 
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, d_k: int):
@@ -28,10 +29,14 @@ class MultiHeadAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
 
     def forward(self, x: Tensor, mask: bool = False) -> Tensor:
-        Q = self.linear_q(x)
-        K = self.linear_k(x)
-        V = self.linear_v(x)
+        # x: (batch_size, seq_len, d_model)
+        batch_size, seq_len, _ = x.size()
+        Q = self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
+        K = self.linear_k(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
+        V = self.linear_v(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
 
         attention = self.attention(Q, K, V, mask)
-        output = self.linear_out(attention)
+        attention = attention.transpose(1, 2) # (batch_size, seq_len, n_heads, d_k)
+        attention = attention.contiguous().view(batch_size, seq_len, self.d_model) # (batch_size, seq_len, d_model)
+        output = self.linear_out(attention) # (batch_size, seq_len, d_model)
         return output

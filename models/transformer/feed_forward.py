@@ -1,9 +1,14 @@
-from torch import nn, Tensor
+import torch
+from models.transformer.activation import SwiGLU
 
-class FeedForwardSwiGLU(nn.Module):
-    def __init__(self, d_model: int):
+
+class FeedForwardSwiGLU(torch.nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+    ):
         super().__init__()
-        # TODO: 初期化
+        self._swiglu = SwiGLU(d_model, d_model)
 
-    def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._swiglu(x)

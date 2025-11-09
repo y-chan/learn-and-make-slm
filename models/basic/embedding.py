@@ -3,10 +3,14 @@ from torch import nn, Tensor
 class Embedding(nn.Module):
     def __init__(self, num_embeddings: int, embedding_dim: int):
         super().__init__()
-        # TODO: 初期化
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.one_hot = nn.functional.one_hot
+        self.w = nn.Parameter(torch.randn(num_embeddings, embedding_dim))
 
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
+        one_hot = self.one_hot(x, num_classes=self.num_embeddings).float()
+        return one_hot @ self.w
 
 
 if __name__ == "__main__":

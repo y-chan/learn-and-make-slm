@@ -1,7 +1,7 @@
 from torch import nn, Tensor
 
-class Linear(nn.Module):
-    def __init__(self, in_features: int, out_features: int):
+class LayerNorm(nn.Module):
+    def __init__(self, normalized_shape: int | list[int]):
         super().__init__()
         # TODO: 初期化
 
@@ -12,8 +12,8 @@ class Linear(nn.Module):
 if __name__ == "__main__":
     import torch
 
-    linear = Linear(10, 20)
+    layer_norm = LayerNorm([10])
 
     x = torch.randn(2, 10)
-    assert linear(x).shape == (2, 20)
-    print("Linear test passed")
+    assert layer_norm(x).shape == (2, 10)
+    print("LayerNorm test passed")

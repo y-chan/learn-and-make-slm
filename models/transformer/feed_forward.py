@@ -1,10 +1,9 @@
-from torch import nn, Tensor
-
+import torch
 from models.basic.linear import Linear
 from models.transformer.activation import SwiGLU
 
 
-class FeedForwardSwiGLU(nn.Module):
+class FeedForwardSwiGLU(torch.nn.Module):
     def __init__(self, d_model: int):
         super().__init__()
         d_hidden = d_model * 4
@@ -13,5 +12,5 @@ class FeedForwardSwiGLU(nn.Module):
         self._swiglu = SwiGLU(d_model, d_hidden)
         self._inverse = Linear(d_hidden, d_model)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._inverse(self._swiglu(x))

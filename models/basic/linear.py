@@ -1,4 +1,4 @@
-from torch import SymInt, Tensor, nn
+from torch import SymInt, Tensor, nn, randn, where
 
 
 def nonzero_randn(*shape: int | SymInt, epsilon: float = 1e-6) -> Tensor:
@@ -21,9 +21,9 @@ def nonzero_randn(*shape: int | SymInt, epsilon: float = 1e-6) -> Tensor:
         msg = f"epsilon must be positive, but got {epsilon}"
         raise ValueError(msg)
 
-    x = torch.randn(shape)
+    x = randn(*shape)
     mask = x.abs() < epsilon
-    return torch.where(mask, epsilon * x.sign(), x)
+    return where(mask, epsilon * x.sign(), x)
 
 
 class Linear(nn.Module):

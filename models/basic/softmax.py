@@ -1,11 +1,14 @@
-from torch import nn, Tensor
+from torch import Tensor, nn
+
 
 class Softmax(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
+        bottom = x.exp().sum(dim=-1, keepdim=True)
+        return x.exp() / bottom
+
 
 if __name__ == "__main__":
     import torch

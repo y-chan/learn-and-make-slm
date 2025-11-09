@@ -1,6 +1,7 @@
 from torch import nn, Tensor
 import torch
 
+
 class Embedding(nn.Module):
     def __init__(self, num_embeddings: int, embedding_dim: int):
         super().__init__()

@@ -1,5 +1,6 @@
 from torch import nn, Tensor
 
+
 class LayerNorm(nn.Module):
     def __init__(self, normalized_shape: int | list[int]):
         super().__init__()

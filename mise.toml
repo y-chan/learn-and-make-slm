@@ -1,0 +1,11 @@
+[tasks."lint"]
+run = "uv run ruff check"
+description = "Lint code with ruff"
+
+[tasks."lint:fix"]
+run = "uv run ruff check --fix"
+description = "Lint and fix code with ruff"
+
+[tasks."fmt"]
+run = "uv run ruff format"
+description = "Format code with ruff"

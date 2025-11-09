@@ -41,11 +41,11 @@ class GLU(torch.nn.Module):
         dim_hidden: int,
     ):
         super().__init__()
-        self.W = Linear(dim_in, dim_hidden)
-        self.V = Linear(dim_in, dim_hidden)
+        self.proj = Linear(dim_in, dim_hidden * 2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.W(x) * sigmoid(self.V(x))
+        w, v = self.proj(x).chunk(2, dim=-1)
+        return w * sigmoid(v)
 
 
 class SwiGLU(torch.nn.Module):
@@ -55,9 +55,9 @@ class SwiGLU(torch.nn.Module):
         dim_hidden: int,
     ):
         super().__init__()
-        self.W = Linear(dim_in, dim_hidden)
-        self.V = Linear(dim_in, dim_hidden)
+        self.proj = Linear(dim_in, dim_hidden * 2)
         self._swish = Swish()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.W(x) * self._swish(self.V(x))
+        w, v = self.proj(x).chunk(2, dim=-1)
+        return w * self._swish(v)

@@ -22,16 +22,16 @@ class RotaryPositionalEncoding(nn.Module):
         self.max_seq_len = max_seq_len
 
         # Build rotate matrix with max size at initialization
-        _cos, _sin = self._setup_rotates(max_seq_len=max_seq_len, dim=dim)
-        self.register_buffer("cos", _cos, persistent=False)
-        self.register_buffer("sin", _sin, persistent=False)
+        _cos, _sin = self._compute_rotates(max_seq_len=max_seq_len, dim=dim, device=torch.device("cpu"))
+        self.cos = _cos
+        self.sin = _sin
 
     @jaxtyped(typechecker=beartype)
-    def _setup_rotates(
-        self, *, max_seq_len: int, dim: int
+    def _compute_rotates(
+        self, *, max_seq_len: int, dim: int, device: torch.device
     ) -> tuple[Float[Tensor, "{max_seq_len} {dim}"], Float[Tensor, "{max_seq_len} {dim}"]]:  # noqa: F821
         base = 10000
-        vec = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))  # (dim/2,)
+        vec = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float, device=device) / dim))  # (dim/2,)
         thetas = (
             vec.unsqueeze(1)  # (dim/2, 1)
             .expand(-1, 2)  # (dim/2, 2)
@@ -47,9 +47,11 @@ class RotaryPositionalEncoding(nn.Module):
     def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         seq_len = x.size(-2)
         if seq_len > self.max_seq_len:
-            raise ValueError(
-                f"Sequence length {seq_len} exceeds maximum {self.max_seq_len}. Consider increasing max_seq_len."
-            )
+            # Expand cache automatically
+            _cos, _sin = self._compute_rotates(max_seq_len=seq_len, dim=self.dim, device=x.device)
+            self.cos = _cos
+            self.sin = _sin
+            self.max_seq_len = seq_len
 
         cos = self.cos[:seq_len, :]  # (seq_len, dim)
         sin = self.sin[:seq_len, :]  # (seq_len, dim)

@@ -3,8 +3,19 @@ import torch
 from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from typing import Optional
-from jaxtyping import Float, Bool, jaxtyped
+from jaxtyping import Float, Bool, Int, jaxtyped
 from beartype import beartype as typechecker
+
+from utils.mask import make_pad_mask
+try:
+    import xformers.ops as xops  # type: ignore
+    import xformers.ops.fmha as fmha
+    _HAS_XFORMERS = True
+except Exception:
+    xops = None  # type: ignore
+    fmha = None  # type: ignore
+    _HAS_XFORMERS = False
+
 
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, d_k: int):
@@ -12,23 +23,88 @@ class ScaledDotProductAttention(nn.Module):
         self.d_k = d_k
         self.softmax = Softmax()
         self.scale = 1.0 / torch.sqrt(torch.tensor(d_k, dtype=torch.float32))
-    
+
+    @jaxtyped(typechecker=typechecker)
+    def xformers_forward(
+        self,
+        Q: Float[Tensor, "B H S D={self.d_k}"],
+        K: Float[Tensor, "B H S D"],
+        V: Float[Tensor, "B H S D"],
+        seq_lens: Optional[Int[Tensor, "B"]] = None
+    ) -> Float[Tensor, "B H S D"]:
+        if not _HAS_XFORMERS:
+            raise RuntimeError("xFormers is not available")
+
+        # 期待形状に並べ替え: (B, H, S, d_k) -> (B, S, H, d_k)
+        Q = Q.transpose(1, 2)
+        K = K.transpose(1, 2)
+        V = V.transpose(1, 2)
+
+        if seq_lens is not None:
+            Q_list: list[Float[Tensor, "S H D"]] = list(Q.unbind(0))
+            Q_list = [tensor[:length] for tensor, length in zip(Q_list, seq_lens)]
+            K_list: list[Float[Tensor, "S H D"]] = list(K.unbind(0))
+            K_list = [tensor[:length] for tensor, length in zip(K_list, seq_lens)]
+            V_list: list[Float[Tensor, "S H D"]] = list(V.unbind(0))
+            V_list = [tensor[:length] for tensor, length in zip(V_list, seq_lens)]
+
+        else:
+            Q_list = list(Q.unbind(0))
+            K_list = list(K.unbind(0))
+            V_list = list(V.unbind(0))
+
+        attn_bias, Q = fmha.BlockDiagonalMask.from_tensor_list(Q_list)
+        _, K = fmha.BlockDiagonalMask.from_tensor_list(K_list)
+        _, V = fmha.BlockDiagonalMask.from_tensor_list(V_list)
+
+        out = xops.memory_efficient_attention(Q, K, V, attn_bias=attn_bias, scale=float(self.scale))  # type: ignore
+
+        list_out = attn_bias.split(out)
+        padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.randn_like(Q)
+        for i, out_elem in enumerate(list_out):
+            if seq_lens is not None:
+                padded_out[i][:seq_lens[i]] = out_elem
+            else:
+                padded_out[i] = out_elem
+        padded_out: Float[Tensor, "B H S D={self.d_k}"] = padded_out.transpose(1, 2)
+        return padded_out
+
+    @jaxtyped(typechecker=typechecker)
+    def reference_forward(
+        self,
+        Q: Float[Tensor, "B H S D={self.d_k}"],
+        K: Float[Tensor, "B H S D"],
+        V: Float[Tensor, "B H S D"],
+        seq_lens: Optional[Int[Tensor, "B"]] = None
+    ) -> Float[Tensor, "B H S D"]:
+        scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
+        if seq_lens is not None:
+            mask: Bool[Tensor, "B 1 1 S"] = (
+                make_pad_mask(seq_lens)
+                .to(scores.device)
+                .unsqueeze(1)
+                .unsqueeze(1)
+                .bool()
+            )
+            scores = scores.masked_fill(mask, float('-inf'))
+        attn_weights = self.softmax(scores)
+        output = attn_weights @ V
+        return output
+
     @jaxtyped(typechecker=typechecker)
     def forward(
         self,
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        mask: Optional[Bool[Tensor, "B 1 S"]] = None
-    ) -> Float[Tensor, "B H S D"]:
-        scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
-        if mask is not None:
-            mask: Bool[Tensor, "B 1 S"] = mask.bool()
-            mask: Bool[Tensor, "B 1 1 S"] = mask.unsqueeze(1)
-            scores = scores.masked_fill(mask, float('-inf'))
-        attn_weights = self.softmax(scores)
-        output = attn_weights @ V
-        return output
+        seq_lens: Optional[Int[Tensor, "B"]] = None
+    ) -> Tensor:
+        try:
+            return self.xformers_forward(Q, K, V, seq_lens)
+        except Exception:
+            # 使えない状況（未対応のmaskやCPU/未実装カーネル等）は自前実装にフォールバック
+            return self.reference_forward(Q, K, V, seq_lens)
+
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int):
@@ -74,7 +150,7 @@ class GroupedQueryAttention(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "B S D={self.d_model}"],
-        mask: Optional[Bool[Tensor, "B 1 S"]]=None
+        seq_lens: Optional[Int[Tensor, "B"]] = None
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
         Q: Float[Tensor, "B H={self.n_heads} S D"] = self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
@@ -89,7 +165,7 @@ class GroupedQueryAttention(nn.Module):
         V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
         V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
-        attention = self.attention(Q, K, V, mask)
+        attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2) # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model) # (batch_size, seq_len, d_model)
         output = self.linear_out(attention) # (batch_size, seq_len, d_model)

@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["numpy>=2.3.4", "torch>=2.9.0"]
+dependencies = [
+    "beartype>=0.22.6",
+    "jaxtyping>=0.3.3",
+    "numpy>=2.3.4",
+    "torch>=2.9.0",
+]
 
 [dependency-groups]
 dev = ["ruff>=0.13.2", "ipykernel>=6.30.1"]
@@ -16,6 +21,11 @@ package = false
 [tool.ruff]
 target-version = "py313"
 line-length = 125
+
+[tool.ruff.lint]
+ignore = [
+    "F722", # https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
+]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -37,34 +37,30 @@ class ScaledDotProductAttention(nn.Module):
         if not _HAS_XFORMERS:
             raise RuntimeError("xFormers is not available")
 
+        B, *_ = Q.shape
+
         # 期待形状に並べ替え: (B, H, S, d_k) -> (B, S, H, d_k)
         Q = Q.transpose(1, 2)
         K = K.transpose(1, 2)
         V = V.transpose(1, 2)
 
         if seq_lens is not None:
-            Q_list: list[Float[Tensor, "S H D"]] = list(Q.unbind(0))
-            Q_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(Q_list, seq_lens)]
-            K_list: list[Float[Tensor, "S H D"]] = list(K.unbind(0))
-            K_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(K_list, seq_lens)]
-            V_list: list[Float[Tensor, "S H D"]] = list(V.unbind(0))
-            V_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(V_list, seq_lens)]
-
+            Q_list = [Q[i : i + 1, : seq_lens[i]] for i in range(B)]
+            K_list = [K[i : i + 1, : seq_lens[i]] for i in range(B)]
+            V_list = [V[i : i + 1, : seq_lens[i]] for i in range(B)]
         else:
-            Q_list = [tensor.unsqueeze(0) for tensor in Q.unbind(0)]
-            K_list = [tensor.unsqueeze(0) for tensor in K.unbind(0)]
-            V_list = [tensor.unsqueeze(0) for tensor in V.unbind(0)]
+            Q_list = [Q[i : i + 1] for i in range(B)]
+            K_list = [K[i : i + 1] for i in range(B)]
+            V_list = [V[i : i + 1] for i in range(B)]
 
-        attn_bias, Q_reshaped = fmha.BlockDiagonalMask.from_tensor_list(Q_list)
-        _, K_reshaped = fmha.BlockDiagonalMask.from_tensor_list(K_list)
-        _, V_reshaped = fmha.BlockDiagonalMask.from_tensor_list(V_list)
+        attn_bias, Q_reshaped, K_reshaped, V_reshaped = fmha.BlockDiagonalMask.from_tensor_lists_qkv(Q_list, K_list, V_list)
 
         out = xops.memory_efficient_attention(
             Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
         )  # type: ignore
 
         list_out = attn_bias.split(out)
-        padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.randn_like(Q)
+        padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.empty_like(Q)
         for i, out_elem in enumerate(list_out):
             if seq_lens is not None:
                 padded_out[i][: seq_lens[i]] = out_elem

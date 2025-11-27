@@ -11,6 +11,24 @@ dependencies = [
     "torch>=2.9.0",
 ]
 
+# TODO: 学習マシンの CUDA のバージョン次第で pytorch-cu[version] の部分は調整する
+# https://docs.astral.sh/uv/guides/integration/pytorch/#using-a-pytorch-index
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 [dependency-groups]
 dev = [
     "ruff>=0.13.2",

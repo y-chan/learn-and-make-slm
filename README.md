@@ -15,12 +15,6 @@ source .venv/bin/activate
 uv sync
 ```
 
-PyTorchだけはややこしいので、別途インストールする。(最初にPyTorchを入れた環境がM2 Macbook Airなので、多分Macbookの人は何もしなくても大丈夫)
-
-```bash
-uv pip install torch --torch-backend=auto
-```
-
 ## 実行
 
 これで動くのが理想

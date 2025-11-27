@@ -13,28 +13,42 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
 
 
 class RotaryPositionalEncoding(nn.Module):
-    thetas: Tensor  # (dim,)
+    cos: Tensor  # (max_seq_len, dim)
+    sin: Tensor  # (max_seq_len, dim)
 
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, max_seq_len: int = 2048) -> None:
         super().__init__()
         self.dim = dim
-        _thetas = self._setup_thetas(dim)
-        self.register_buffer("thetas", _thetas)
+        self.max_seq_len = max_seq_len
+
+        # Build rotate matrix with max size at initialization
+        _cos, _sin = self._setup_rotates(max_seq_len=max_seq_len, dim=dim)
+        self.register_buffer("cos", _cos, persistent=False)
+        self.register_buffer("sin", _sin, persistent=False)
 
     @jaxtyped(typechecker=beartype)
-    def _setup_thetas(self, dim: int) -> Float[Tensor, "{dim}"]:  # noqa: F821
+    def _setup_rotates(
+        self, *, max_seq_len: int, dim: int
+    ) -> tuple[Float[Tensor, "{max_seq_len} {dim}"], Float[Tensor, "{max_seq_len} {dim}"]]:  # noqa: F821
         base = 10000
         vec = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
-        return torch.repeat_interleave(vec, repeats=2)
+        thetas = torch.repeat_interleave(vec, repeats=2)  # (dim,)
+
+        pos = torch.arange(0, max_seq_len, dtype=torch.float)  # (max_seq_len,)
+        rotate = torch.outer(pos, thetas)  # (max_seq_len, dim)
+
+        return torch.cos(rotate), torch.sin(rotate)
 
     @jaxtyped(typechecker=beartype)
     def forward(self, x: Float[Tensor, "seq {self.dim}"]) -> Float[Tensor, "seq {self.dim}"]:  # noqa: F821
-        start = 1
-        end = start + x.size(-2)
-        pos = torch.arange(start, end, dtype=torch.float, device=x.device)  # (seq,)
-        rotate = torch.outer(pos, self.thetas)  # (seq, dim)
+        seq_len = x.size(-2)
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"Sequence length {seq_len} exceeds maximum {self.max_seq_len}")
 
-        return x * torch.cos(rotate) + rotate_half(x) * torch.sin(rotate)
+        cos = self.cos[:seq_len, :]  # (seq_len, dim)
+        sin = self.sin[:seq_len, :]  # (seq_len, dim)
+
+        return (x * cos) + (rotate_half(x) * sin)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,9 @@ class RotaryPositionalEncoding(nn.Module):
     def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         seq_len = x.size(-2)
         if seq_len > self.max_seq_len:
-            raise ValueError(f"Sequence length {seq_len} exceeds maximum {self.max_seq_len}")
+            raise ValueError(
+                f"Sequence length {seq_len} exceeds maximum {self.max_seq_len}. Consider increasing max_seq_len."
+            )
 
         cos = self.cos[:seq_len, :]  # (seq_len, dim)
         sin = self.sin[:seq_len, :]  # (seq_len, dim)

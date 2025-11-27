@@ -8,13 +8,35 @@ dependencies = [
     "beartype>=0.22.6",
     "jaxtyping>=0.3.3",
     "numpy>=2.3.4",
-    "torch@https://download.pytorch.org/whl/cu126/torch-2.9.0%2Bcu126-cp313-cp313-manylinux_2_28_x86_64.whl ; sys_platform == 'linux'",
-    "torch==2.9.0 ; sys_platform != 'linux'",
+    "torch==2.9.0",
     "xformers ; sys_platform == 'linux'",
 ]
 
+# TODO: 学習マシンの CUDA のバージョン次第で pytorch-cu[version] の部分は調整する
+# https://docs.astral.sh/uv/guides/integration/pytorch/#using-a-pytorch-index
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 [dependency-groups]
-dev = ["ruff>=0.13.2", "ipykernel>=6.30.1"]
+dev = [
+    "ruff>=0.13.2",
+    "ipykernel>=6.30.1",
+    "pytest>=8.3.3",
+    "pytest-github-actions-annotate-failures>=0.3.0",
+]
 
 [tool.uv]
 managed = true
@@ -34,3 +56,6 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+addopts = "--jaxtyping-packages=models,beartype.beartype"

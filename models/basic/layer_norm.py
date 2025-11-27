@@ -1,4 +1,5 @@
 from torch import nn, Tensor
+import torch
 
 
 class LayerNorm(nn.Module):
@@ -14,13 +15,3 @@ class LayerNorm(nn.Module):
         x_var = x.var(dim=-1, keepdim=True)
         x_normalized = (x - x_mean) / torch.sqrt(x_var + self.eps)
         return x_normalized * self.gamma + self.beta
-
-
-if __name__ == "__main__":
-    import torch
-
-    layer_norm = LayerNorm([10])
-
-    x = torch.randn(2, 10)
-    assert layer_norm(x).shape == (2, 10)
-    print("LayerNorm test passed")

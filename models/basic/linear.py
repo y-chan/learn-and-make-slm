@@ -48,13 +48,3 @@ class Linear(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # y = w * x + b
         return x @ self.weight.T + self.bias
-
-
-if __name__ == "__main__":
-    import torch
-
-    linear = Linear(10, 20)
-
-    x = torch.randn(2, 10)
-    assert linear(x).shape == (2, 20)
-    print("Linear test passed")

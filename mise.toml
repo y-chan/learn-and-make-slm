@@ -1,3 +1,6 @@
+[tasks.check]
+depends = ["lint:fix", "fmt", "test"]
+
 [tasks."lint"]
 run = "uv run ruff check"
 description = "Lint code with ruff"
@@ -9,3 +12,7 @@ description = "Lint and fix code with ruff"
 [tasks."fmt"]
 run = "uv run ruff format"
 description = "Format code with ruff"
+
+[tasks.test]
+run = "uv run pytest"
+description = "Run tests with pytest"

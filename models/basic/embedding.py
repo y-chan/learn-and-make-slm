@@ -13,13 +13,3 @@ class Embedding(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         one_hot = self.one_hot_vec[x]
         return one_hot @ self.w
-
-
-if __name__ == "__main__":
-    import torch
-
-    embedding = Embedding(50, 20)
-
-    x = torch.randint(0, 50, (2, 10))
-    assert embedding(x).shape == (2, 10, 20)
-    print("Embedding test passed")

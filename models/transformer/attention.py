@@ -7,9 +7,11 @@ from jaxtyping import Float, Bool, Int, jaxtyped
 from beartype import beartype as typechecker
 
 from utils.mask import make_pad_mask
+
 try:
     import xformers.ops as xops  # type: ignore
     import xformers.ops.fmha as fmha
+
     _HAS_XFORMERS = True
 except Exception:
     xops = None  # type: ignore
@@ -30,7 +32,7 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None
+        seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "B H S D"]:
         if not _HAS_XFORMERS:
             raise RuntimeError("xFormers is not available")
@@ -63,7 +65,7 @@ class ScaledDotProductAttention(nn.Module):
         padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.randn_like(Q)
         for i, out_elem in enumerate(list_out):
             if seq_lens is not None:
-                padded_out[i][:seq_lens[i]] = out_elem
+                padded_out[i][: seq_lens[i]] = out_elem
             else:
                 padded_out[i] = out_elem
         padded_out: Float[Tensor, "B H S D={self.d_k}"] = padded_out.transpose(1, 2)
@@ -75,18 +77,12 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None
+        seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "B H S D"]:
         scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
         if seq_lens is not None:
-            mask: Bool[Tensor, "B 1 1 S"] = (
-                make_pad_mask(seq_lens)
-                .to(scores.device)
-                .unsqueeze(1)
-                .unsqueeze(1)
-                .bool()
-            )
-            scores = scores.masked_fill(mask, float('-inf'))
+            mask: Bool[Tensor, "B 1 1 S"] = make_pad_mask(seq_lens).to(scores.device).unsqueeze(1).unsqueeze(1).bool()
+            scores = scores.masked_fill(mask, float("-inf"))
         attn_weights = self.softmax(scores)
         output = attn_weights @ V
         return output
@@ -97,7 +93,7 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None
+        seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Tensor:
         try:
             return self.xformers_forward(Q, K, V, seq_lens)
@@ -122,15 +118,22 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
-        Q = self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
-        K = self.linear_k(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
-        V = self.linear_v(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2) # (batch_size, n_heads, seq_len, d_k)
+        Q = (
+            self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
+        )  # (batch_size, n_heads, seq_len, d_k)
+        K = (
+            self.linear_k(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
+        )  # (batch_size, n_heads, seq_len, d_k)
+        V = (
+            self.linear_v(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
+        )  # (batch_size, n_heads, seq_len, d_k)
 
         attention = self.attention(Q, K, V, mask)
-        attention = attention.transpose(1, 2) # (batch_size, seq_len, n_heads, d_k)
-        attention = attention.contiguous().view(batch_size, seq_len, self.d_model) # (batch_size, seq_len, d_model)
-        output = self.linear_out(attention) # (batch_size, seq_len, d_model)
+        attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
+        attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
+        output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
         return output
+
 
 class GroupedQueryAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, n_groups: int):
@@ -148,25 +151,33 @@ class GroupedQueryAttention(nn.Module):
 
     @jaxtyped(typechecker=typechecker)
     def forward(
-        self,
-        x: Float[Tensor, "B S D={self.d_model}"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None
+        self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
-        Q: Float[Tensor, "B H={self.n_heads} S D"] = self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
+        Q: Float[Tensor, "B H={self.n_heads} S D"] = (
+            self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
+        )
 
-        K: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = self.linear_k(x).reshape(batch_size, seq_len, self.n_heads//self.n_groups, self.d_model // self.n_heads).transpose(1, 2)
+        K: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = (
+            self.linear_k(x)
+            .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
+            .transpose(1, 2)
+        )
         K: Float[Tensor, "B H_G 1 S D"] = K.unsqueeze(2)
         K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
         K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
-        V: Float[Tensor, "B H_G S D"] = self.linear_v(x).reshape(batch_size, seq_len, self.n_heads//self.n_groups, self.d_model // self.n_heads).transpose(1, 2)
+        V: Float[Tensor, "B H_G S D"] = (
+            self.linear_v(x)
+            .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
+            .transpose(1, 2)
+        )
         V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
         V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
         V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
         attention = self.attention(Q, K, V, seq_lens)
-        attention = attention.transpose(1, 2) # (batch_size, seq_len, n_heads, d_k)
-        attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model) # (batch_size, seq_len, d_model)
-        output = self.linear_out(attention) # (batch_size, seq_len, d_model)
+        attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
+        attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
+        output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
         return output

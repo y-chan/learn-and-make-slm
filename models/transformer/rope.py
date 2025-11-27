@@ -1,10 +1,8 @@
-from beartype import beartype
-from jaxtyping import Float, jaxtyped
+from jaxtyping import Float
 from torch import Tensor, nn
 import torch
 
 
-@jaxtyped(typechecker=beartype)
 def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
     x = x.reshape(*x.shape[:-1], -1, 2)  # [..., dim/2, 2]
     x1, x2 = x[..., 0], x[..., 1]
@@ -30,7 +28,6 @@ class RotaryPositionalEncoding(nn.Module):
 
         self._update_cache(seq_len=max_seq_len, device=torch.device("cpu"), dtype=torch.get_default_dtype())
 
-    @jaxtyped(typechecker=beartype)
     def _compute_rotates(
         self, *, max_seq_len: int, dim: int, device: torch.device, dtype: torch.dtype
     ) -> tuple[Float[Tensor, "{max_seq_len} {dim}"], Float[Tensor, "{max_seq_len} {dim}"]]:  # noqa: F821
@@ -63,7 +60,6 @@ class RotaryPositionalEncoding(nn.Module):
         self.sin = _sin
         self.max_seq_len = target_len
 
-    @jaxtyped(typechecker=beartype)
     def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         seq_len = x.size(-2)
         self._update_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
@@ -72,10 +68,3 @@ class RotaryPositionalEncoding(nn.Module):
         sin = self.sin[:seq_len, :]  # (seq_len, dim)
 
         return (x * cos) + (rotate_half(x) * sin)
-
-
-if __name__ == "__main__":
-    x = torch.randn(10, 16)  # (seq_len, dim)
-    rope = RotaryPositionalEncoding(dim=16)
-    y = rope(x)
-    assert y.shape == x.shape, f"y shape {y.shape} must be same as x shape {x.shape}"

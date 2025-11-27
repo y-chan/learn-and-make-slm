@@ -128,9 +128,7 @@ def make_pad_mask(
         if length_dim < 0:
             length_dim = xs.dim() + length_dim
         # ind = (:, None, ..., None, :, , None, ..., None)
-        ind = tuple(
-            slice(None) if i in (0, length_dim) else None for i in range(xs.dim())
-        )
+        ind = tuple(slice(None) if i in (0, length_dim) else None for i in range(xs.dim()))
         mask = mask[ind].expand_as(xs).to(xs.device)
     return mask
 

@@ -72,10 +72,3 @@ class RotaryPositionalEncoding(nn.Module):
         sin = self.sin[:seq_len, :]  # (seq_len, dim)
 
         return (x * cos) + (rotate_half(x) * sin)
-
-
-if __name__ == "__main__":
-    x = torch.randn(10, 16)  # (seq_len, dim)
-    rope = RotaryPositionalEncoding(dim=16)
-    y = rope(x)
-    assert y.shape == x.shape, f"y shape {y.shape} must be same as x shape {x.shape}"

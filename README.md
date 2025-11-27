@@ -30,3 +30,13 @@ uv run train.py
 ```
 
 一応、各モジュールごとに動作確認できるようにしてある。
+
+## Tensor の型付け
+
+可読性の観点から、jaxtypings を使って Tensor に型付けすることを推奨する。
+
+<https://docs.kidger.site/jaxtyping/api/array/>
+
+学習でのオーバーヘッドを避けるため `nn.Module` の実装に `@jaxtyped` を付与しないことを推奨しており、代わりに pytest を実行すると自動で jaxtyping の runtime checking が実行されるようにしてある。
+
+そのため、各 Module ごとに、出力の shape を見る程度の簡単なテストを追加して CI で Tensor の型付けが正しいか確認可能にすることを推奨する。 (tests/transformer/rope_test.py 程度のもので良い)

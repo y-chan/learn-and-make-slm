@@ -31,8 +31,12 @@ class RotaryPositionalEncoding(nn.Module):
         self, *, max_seq_len: int, dim: int
     ) -> tuple[Float[Tensor, "{max_seq_len} {dim}"], Float[Tensor, "{max_seq_len} {dim}"]]:  # noqa: F821
         base = 10000
-        vec = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
-        thetas = torch.repeat_interleave(vec, repeats=2)  # (dim,)
+        vec = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))  # (dim/2,)
+        thetas = (
+            vec.unsqueeze(1)  # (dim/2, 1)
+            .expand(-1, 2)  # (dim/2, 2)
+            .reshape(-1)  # (dim,)
+        )
 
         pos = torch.arange(0, max_seq_len, dtype=torch.float)  # (max_seq_len,)
         rotate = torch.outer(pos, thetas)  # (max_seq_len, dim)

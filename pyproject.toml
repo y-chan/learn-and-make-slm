@@ -22,6 +22,11 @@ package = false
 target-version = "py313"
 line-length = 125
 
+[tool.ruff.lint]
+ignore = [
+    "F722", # https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
+]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

@@ -1,3 +1,6 @@
+[tasks.check]
+depends = ["lint:fix", "fmt", "test"]
+
 [tasks."lint"]
 run = "uv run ruff check"
 description = "Lint code with ruff"

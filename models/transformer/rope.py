@@ -56,8 +56,6 @@ class RotaryPositionalEncoding(nn.Module):
 
 
 if __name__ == "__main__":
-    import torch
-
     x = torch.randn(10, 16)  # (seq_len, dim)
     rope = RotaryPositionalEncoding(dim=16)
     y = rope(x)

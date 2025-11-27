@@ -10,13 +10,3 @@ class Softmax(nn.Module):
         x_max = x.max(dim=-1, keepdim=True)[0]
         x_exp = (x - x_max).exp()
         return x_exp / x_exp.sum(dim=-1, keepdim=True)
-
-
-if __name__ == "__main__":
-    import torch
-
-    softmax = Softmax()
-
-    x = torch.randn(2, 10)
-    assert softmax(x).shape == (2, 10)
-    print("Softmax test passed")

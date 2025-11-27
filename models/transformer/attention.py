@@ -44,22 +44,24 @@ class ScaledDotProductAttention(nn.Module):
 
         if seq_lens is not None:
             Q_list: list[Float[Tensor, "S H D"]] = list(Q.unbind(0))
-            Q_list = [tensor[:length] for tensor, length in zip(Q_list, seq_lens)]
+            Q_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(Q_list, seq_lens)]
             K_list: list[Float[Tensor, "S H D"]] = list(K.unbind(0))
-            K_list = [tensor[:length] for tensor, length in zip(K_list, seq_lens)]
+            K_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(K_list, seq_lens)]
             V_list: list[Float[Tensor, "S H D"]] = list(V.unbind(0))
-            V_list = [tensor[:length] for tensor, length in zip(V_list, seq_lens)]
+            V_list = [tensor[:length].unsqueeze(0) for tensor, length in zip(V_list, seq_lens)]
 
         else:
-            Q_list = list(Q.unbind(0))
-            K_list = list(K.unbind(0))
-            V_list = list(V.unbind(0))
+            Q_list = [tensor.unsqueeze(0) for tensor in Q.unbind(0)]
+            K_list = [tensor.unsqueeze(0) for tensor in K.unbind(0)]
+            V_list = [tensor.unsqueeze(0) for tensor in V.unbind(0)]
 
-        attn_bias, Q = fmha.BlockDiagonalMask.from_tensor_list(Q_list)
-        _, K = fmha.BlockDiagonalMask.from_tensor_list(K_list)
-        _, V = fmha.BlockDiagonalMask.from_tensor_list(V_list)
+        attn_bias, Q_reshaped = fmha.BlockDiagonalMask.from_tensor_list(Q_list)
+        _, K_reshaped = fmha.BlockDiagonalMask.from_tensor_list(K_list)
+        _, V_reshaped = fmha.BlockDiagonalMask.from_tensor_list(V_list)
 
-        out = xops.memory_efficient_attention(Q, K, V, attn_bias=attn_bias, scale=float(self.scale))  # type: ignore
+        out = xops.memory_efficient_attention(
+            Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
+        )  # type: ignore
 
         list_out = attn_bias.split(out)
         padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.randn_like(Q)
@@ -81,7 +83,12 @@ class ScaledDotProductAttention(nn.Module):
     ) -> Float[Tensor, "B H S D"]:
         scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
         if seq_lens is not None:
-            mask: Bool[Tensor, "B 1 1 S"] = make_pad_mask(seq_lens).to(scores.device).unsqueeze(1).unsqueeze(1).bool()
+            # make_pad_maskにmaxlenを明示的に渡す
+            # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
+            maxlen = Q.size(2)
+            mask: Bool[Tensor, "B 1 1 S"] = (
+                make_pad_mask(seq_lens, maxlen=maxlen).to(scores.device).unsqueeze(1).unsqueeze(1).bool()
+            )
             scores = scores.masked_fill(mask, float("-inf"))
         attn_weights = self.softmax(scores)
         output = attn_weights @ V

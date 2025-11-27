@@ -13,7 +13,7 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
 
 
 class RotaryPositionalEncoding(nn.Module):
-    thetas: Tensor  # (dim/2,)
+    thetas: Tensor  # (dim,)
 
     def __init__(self, dim: int):
         super().__init__()

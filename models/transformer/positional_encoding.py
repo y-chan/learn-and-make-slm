@@ -1,6 +1,7 @@
 from torch import nn, Tensor
 import torch
 
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int):
         super().__init__()

@@ -39,12 +39,17 @@ class ScaledDotProductAttention(nn.Module):
 
         B, *_ = Q.shape
 
-        # 期待形状に並べ替え: (B, H, S, d_k) -> (B, S, H, d_k)
-        Q = Q.transpose(1, 2)
-        K = K.transpose(1, 2)
-        V = V.transpose(1, 2)
+        Q: Float[Tensor, "B S H D={self.d_k}"] = Q.transpose(1, 2)
+        K: Float[Tensor, "B S H D={self.d_k}"] = K.transpose(1, 2)
+        V: Float[Tensor, "B S H D={self.d_k}"] = V.transpose(1, 2)
+
+        # Bは1になる、Sは要素ごとに異なる
+        Q_list: list[Float[Tensor, "1 S_i H D={self.d_k}"]]
+        K_list: list[Float[Tensor, "1 S_i H D={self.d_k}"]]
+        V_list: list[Float[Tensor, "1 S_i H D={self.d_k}"]]
 
         if seq_lens is not None:
+            # unsqueezeが不要なようにインデックスアクセスではなくスライスでアクセスする
             Q_list = [Q[i : i + 1, : seq_lens[i]] for i in range(B)]
             K_list = [K[i : i + 1, : seq_lens[i]] for i in range(B)]
             V_list = [V[i : i + 1, : seq_lens[i]] for i in range(B)]
@@ -53,13 +58,29 @@ class ScaledDotProductAttention(nn.Module):
             K_list = [K[i : i + 1] for i in range(B)]
             V_list = [V[i : i + 1] for i in range(B)]
 
+        # S_total = sum(seq_lens)になる、バッチ分割していたものを一つの系列に結合している
+        Q_reshaped: Float[Tensor, "1 S_total H D={self.d_k}"]
+        K_reshaped: Float[Tensor, "1 S_total H D={self.d_k}"]
+        V_reshaped: Float[Tensor, "1 S_total H D={self.d_k}"]
+        # ref: https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.fmha.attn_bias.BlockDiagonalMask
+        # BlockDiagonalMaskはseq_lensが[2, 3, 2]であればこのようなマスクを作成する
+        # この方式であればメモリ効率の良いAttentionを計算できる
+        # [[   0,    0, -inf, -inf, -inf, -inf, -inf],
+        #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
+        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf, -inf, -inf, -inf,    0,    0],
+        #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
         attn_bias, Q_reshaped, K_reshaped, V_reshaped = fmha.BlockDiagonalMask.from_tensor_lists_qkv(Q_list, K_list, V_list)
 
-        out = xops.memory_efficient_attention(
+        out: Float[Tensor, "1 S_total H D={self.d_k}"] = xops.memory_efficient_attention(
             Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
         )  # type: ignore
 
-        list_out = attn_bias.split(out)
+        # 系列を結合していたものをバッチごとに分割する
+        list_out: list[Float[Tensor, "1 S_i H D={self.d_k}"]] = attn_bias.split(out)
+        # もとの形状に戻す
         padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.empty_like(Q)
         for i, out_elem in enumerate(list_out):
             if seq_lens is not None:

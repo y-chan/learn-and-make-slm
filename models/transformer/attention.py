@@ -34,6 +34,15 @@ class ScaledDotProductAttention(nn.Module):
         V: Float[Tensor, "B H S D"],
         seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "B H S D"]:
+        """
+        xformersの`memory_efficient_attention`を用いてSDPAを計算する。
+        おそらく内部でFlash Attention 2を実行していると思われる。
+        `memory_efficient_attention`を活用するため、バッチ次元を1次元にし、
+        シーケンス次元で結合する"パッキング"という処理を行っている。
+        パッキングに合わせて、パッキングされた複数のシーケンスの独立性を保証するために
+        `BlockDiagonalMask`を導入している。
+        最終的に、入力と同一形状のものが返ってくるようなシェイプ変換も行っている。
+        """
         if not _HAS_XFORMERS:
             raise RuntimeError("xFormers is not available")
 

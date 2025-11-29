@@ -8,7 +8,8 @@ dependencies = [
     "beartype>=0.22.6",
     "jaxtyping>=0.3.3",
     "numpy>=2.3.4",
-    "torch>=2.9.0",
+    "torch==2.9.0",
+    "xformers ; sys_platform == 'linux'",
 ]
 
 # TODO: 学習マシンの CUDA のバージョン次第で pytorch-cu[version] の部分は調整する

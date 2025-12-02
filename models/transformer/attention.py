@@ -148,7 +148,10 @@ class MultiHeadAttention(nn.Module):
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
 
-    def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+    @jaxtyped(typechecker=typechecker)
+    def forward(
+        self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None
+    ) ->  Float[Tensor, "B S D"]:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
         Q = (
@@ -161,7 +164,7 @@ class MultiHeadAttention(nn.Module):
             self.linear_v(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )  # (batch_size, n_heads, seq_len, d_k)
 
-        attention = self.attention(Q, K, V, mask)
+        attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)

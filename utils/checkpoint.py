@@ -30,11 +30,7 @@ def save_checkpoint(
     checkpoint_path: str,
     printf=tqdm.write,
 ):
-    printf(
-        "Saving model and optimizer state at {} epoch to {}".format(
-            epoch, checkpoint_path
-        )
-    )
+    printf("Saving model and optimizer state at {} epoch to {}".format(epoch, checkpoint_path))
     state_dict = model.state_dict()
     torch.save(
         {

@@ -1,7 +1,7 @@
-dataset: "SimpleStories-JA"
+dataset: "SimpleStories-Both"
 tokenizer: "o200k_base"
 path:
-  log_dir: "logs"
+  log_dir: "logs/simple_stories"
 model:
   d_model: 512
   n_heads: 8

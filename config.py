@@ -7,8 +7,8 @@ import inspect
 @dataclasses.dataclass
 class YamlConfig:
     def save(self, config_path: pathlib.Path):
-        """ Export config as YAML file """
-        assert config_path.parent.exists(), f'directory {config_path.parent} does not exist'
+        """Export config as YAML file"""
+        assert config_path.parent.exists(), f"directory {config_path.parent} does not exist"
 
         def convert_dict(data):
             for key, val in data.items():
@@ -18,13 +18,13 @@ class YamlConfig:
                     data[key] = convert_dict(val)
             return data
 
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             yaml.dump(convert_dict(dataclasses.asdict(self)), f)
 
     @classmethod
     def load(cls, config_path: pathlib.Path):
-        """ Load config from YAML file """
-        assert config_path.exists(), f'YAML config {config_path} does not exist'
+        """Load config from YAML file"""
+        assert config_path.exists(), f"YAML config {config_path} does not exist"
 
         def convert_from_dict(parent_cls, data):
             for key, val in data.items():
@@ -43,19 +43,19 @@ class YamlConfig:
 
 
 @dataclasses.dataclass
-class PathConfig:
+class PathConfig(YamlConfig):
     log_dir: pathlib.Path
 
 
 @dataclasses.dataclass
-class ModelConfig:
+class ModelConfig(YamlConfig):
     d_model: int
     n_heads: int
     n_layers: int
 
 
 @dataclasses.dataclass
-class TrainConfig:
+class TrainConfig(YamlConfig):
     manual_seed: int
     epochs: int
     batch_size: int

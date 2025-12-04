@@ -1,12 +1,39 @@
+from typing import TypedDict
+
+import datasets
 from torch import Tensor
+from torch.utils.data import Dataset
 import numpy as np
 import torch
 from utils.pad import pad_1D
 
 
-def dataset_collate(batch: list[list[int]], torch_convert: bool = True) -> dict[str, np.ndarray] | dict[str, Tensor]:
-    lengths = np.array([len(x) for x in batch])
-    tokens_ids = pad_1D(batch)
+class SimpleStoriesBothDataset(Dataset):
+    def __init__(self, subset: str = "train"):
+        self.dataset_ja = datasets.load_dataset("SimpleStories/SimpleStories-JA", split=subset)
+        self.dataset_en = datasets.load_dataset("SimpleStories/SimpleStories", split=subset)
+        self.dataset_ja_len = len(self.dataset_ja)
+        self.dataset_en_len = len(self.dataset_en)
+        self.dataset_en_len = 0
+
+    def __len__(self):
+        return self.dataset_ja_len + self.dataset_en_len
+
+    def __getitem__(self, idx):
+        if idx < self.dataset_ja_len:
+            return self.dataset_ja[idx]
+        else:
+            return self.dataset_en[idx - self.dataset_ja_len]
+
+    def map(self, func, batched: bool = False, **kwargs):
+        self.dataset_ja = self.dataset_ja.map(func, batched=batched, **kwargs)
+        self.dataset_en = self.dataset_en.map(func, batched=batched, **kwargs)
+        return self
+
+
+def dataset_collate(batch, torch_convert: bool = True) -> dict[str, np.ndarray] | dict[str, Tensor]:
+    lengths = np.array([len(x["story"]) for x in batch])
+    tokens_ids = pad_1D([np.array(x["story"], dtype=np.int64) for x in batch])
 
     res = {
         "tokens_ids": tokens_ids,

@@ -1,5 +1,7 @@
 from typing import Optional
 
+import tiktoken
+import torch
 from torch import nn, Tensor
 from jaxtyping import Float, Bool, Int
 
@@ -17,10 +19,11 @@ class GPT2Decoder(nn.Module):
     概ねGPT-2なTransformerのDecoder
     Decoder Layerの実装に一部差異がある
     """
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int):
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
+        self.end_token_id = end_token_id
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
@@ -48,24 +51,49 @@ class GPT2Decoder(nn.Module):
         y = self.softmax(y)
         return y
 
+    def infer(self, starts: Int[Tensor, "1 S"], max_token_count: Optional[int] = None, tokenizer: Optional[tiktoken.Encoding] = None) -> Int[Tensor, "1 S"]:
+        assert starts.size(0) == 1, "starts must be a 1D tensor"
+        x = starts
+        count = 0
+        if tokenizer is not None:
+            starts = tokenizer.decode(starts[0].tolist())
+            print("".join(starts), end="")
+
+        if max_token_count is None:
+            loop_condition = lambda count: True
+        else:
+            loop_condition = lambda count: count < max_token_count
+
+        while loop_condition(count=count):
+            next_token = self(x.detach().clone()).argmax(dim=-1)[:, -2:-1]
+            x = torch.cat([x, next_token], dim=-1)
+            count += 1
+            if next_token[0, 0] == self.end_token_id:
+                break
+            if tokenizer is not None:
+                next_token = tokenizer.decode([next_token.item()])
+                print(next_token[0], end="")
+        return x
+
     def loss(
         self,
         pred_y: Float[Tensor, "B S V={self.n_vocab}"],
         target_y_index: Int[Tensor, "B S"],
         seq_lens: Optional[Int[Tensor, "B"]] = None
     ) -> Float[Tensor, "1"]:
+        pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
         if seq_lens:
-            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, pred_y.size(-1))
+            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=pred_y.size(-1))
 
             # 関係ないところに逆伝播が流れないようにマスクする
-            pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2) * non_pad_mask
+            pred_y = pred_y * non_pad_mask
 
         loss: Float[Tensor, "1"] = nn.functional.cross_entropy(pred_y, target_y_index)
         return loss
 
 
 class GPTOSSDecoder(nn.Module):
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int):
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
         super().__init__()
         # TODO: 初期化
 

@@ -6,10 +6,15 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "beartype>=0.22.6",
+    "datasets>=4.4.1",
     "jaxtyping>=0.3.3",
     "numpy>=2.3.4",
+    "pyyaml>=6.0.3",
+    "tensorboard>=2.20.0",
+    "tiktoken>=0.12.0",
     "torch==2.9.0",
     "xformers ; sys_platform == 'linux'",
+    "tqdm>=4.67.1",
 ]
 
 # TODO: 学習マシンの CUDA のバージョン次第で pytorch-cu[version] の部分は調整する

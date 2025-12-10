@@ -13,4 +13,6 @@ class Embedding(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         # one_hot = self.one_hot_vec[x]
         # return one_hot @ self.w
+        # torch.eyeでone hot vectorを作るのはOut of Memoryを引き起こすが、
+        # 実は単に重みのindexを指定するだけで良く、これならOOMを回避できる
         return self.w[x]

@@ -65,7 +65,7 @@ class GPT2Decoder(nn.Module):
             loop_condition = lambda count: count < max_token_count
 
         while loop_condition(count=count):
-            next_token = self(x.detach().clone()).argmax(dim=-1)[:, -2:-1]
+            next_token = self(x.detach().clone()).argmax(dim=-1)[:, -1:]
             x = torch.cat([x, next_token], dim=-1)
             count += 1
             if next_token[0, 0] == self.end_token_id:

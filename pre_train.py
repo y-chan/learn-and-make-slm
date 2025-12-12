@@ -89,17 +89,17 @@ def train(
         tqdm.write("[INFO] AMP (mixed precision) disabled")
 
     # 全体の進捗を表示するためのバー
-    train_loader_len = len(train_loader) // config.train.gradient_accumulation_steps
+    train_steps = len(train_loader) // config.train.gradient_accumulation_steps
     if len(train_loader) % config.train.gradient_accumulation_steps != 0:
-        train_loader_len += 1
+        train_steps += 1
     total_bar = tqdm(
-        total=config.train.epochs * train_loader_len,
+        total=config.train.epochs * train_steps,
         position=0,
         desc="Steps",
         dynamic_ncols=True,
     )
     # チェックポイントから再開する場合は、既に終わったステップ数を設定
-    total_bar.n = (start_epoch - 1) * train_loader_len
+    total_bar.n = (start_epoch - 1) * train_steps
 
     # 学習率スケジューラ、エポックごとに学習率を減衰させる(lr_decay倍)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=config.train.lr_decay, last_epoch=start_epoch - 2)
@@ -143,7 +143,7 @@ def train(
                 # === 3. 重みの更新 (Weight Update) ===
                 # 指定回数分の勾配を累積するか、エポックの最後のバッチなら重みを更新
                 # 勾配蓄積を利用することで、バッチサイズが小さくても実質的なバッチサイズを大きくできて、学習を安定させることができる
-                if accumulation_step == config.train.gradient_accumulation_steps or batch_step == train_loader_len - 1:
+                if accumulation_step == config.train.gradient_accumulation_steps or batch_step == len(train_loader) - 1:
                     # scalerから実際の勾配値を取り出す(mixed precision用)
                     scaler.unscale_(optimizer)
 

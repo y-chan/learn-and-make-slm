@@ -5,6 +5,6 @@ def to_device(data: dict, device: TorchDevice):
     """Move data to device."""
     for k, v in data.items():
         if isinstance(v, Tensor) or isinstance(v, LongTensor):
-            data[k] = v.to(device)
+            data[k] = v.to(device, non_blocking=True)
 
     return data

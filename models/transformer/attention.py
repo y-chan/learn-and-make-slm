@@ -1,3 +1,4 @@
+import warnings
 from torch import nn, Tensor
 import torch
 from models.basic.softmax import Softmax
@@ -90,7 +91,7 @@ class ScaledDotProductAttention(nn.Module):
         # 系列を結合していたものをバッチごとに分割する
         list_out: list[Float[Tensor, "1 S_i H D={self.d_k}"]] = attn_bias.split(out)
         # もとの形状に戻す
-        padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.empty_like(Q)
+        padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.zeros_like(Q)
         for i, out_elem in enumerate(list_out):
             if seq_lens is not None:
                 padded_out[i][: seq_lens[i]] = out_elem
@@ -131,6 +132,7 @@ class ScaledDotProductAttention(nn.Module):
         try:
             return self.xformers_forward(Q, K, V, seq_lens)
         except Exception:
+            warnings.warn("xFormers is not available, falling back to reference implementation")
             # 使えない状況（未対応のmaskやCPU/未実装カーネル等）は自前実装にフォールバック
             return self.reference_forward(Q, K, V, seq_lens)
 

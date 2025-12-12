@@ -4,6 +4,7 @@ import yaml
 import inspect
 
 
+# ref: https://qiita.com/kzmssk/items/483f25f47e0ed10aa948
 @dataclasses.dataclass
 class YamlConfig:
     def save(self, config_path: pathlib.Path):

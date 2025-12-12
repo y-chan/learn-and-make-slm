@@ -1,5 +1,3 @@
-from typing import TypedDict
-
 import datasets
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -14,7 +12,6 @@ class SimpleStoriesBothDataset(Dataset):
         self.dataset_en = datasets.load_dataset("SimpleStories/SimpleStories", split=subset)
         self.dataset_ja_len = len(self.dataset_ja)
         self.dataset_en_len = len(self.dataset_en)
-        self.dataset_en_len = 0
 
     def __len__(self):
         return self.dataset_ja_len + self.dataset_en_len
@@ -31,9 +28,19 @@ class SimpleStoriesBothDataset(Dataset):
         return self
 
 
-def dataset_collate(batch, torch_convert: bool = True) -> dict[str, np.ndarray] | dict[str, Tensor]:
-    lengths = np.array([len(x["story"]) for x in batch])
-    tokens_ids = pad_1D([np.array(x["story"], dtype=np.int64) for x in batch])
+def dataset_collate(batch, torch_convert: bool = True, max_length: int = 512) -> dict[str, np.ndarray] | dict[str, Tensor]:
+    # max_lengthを超えるサンプルについては、ランダムな開始地点からカットする
+    stories = []
+    for x in batch:
+        story = np.array(x["story"], dtype=np.int64)
+        if len(story) > max_length:
+            # ランダムな開始地点を決定（0からlen(story) - max_lengthの間）
+            start_idx = np.random.randint(0, len(story) - max_length + 1)
+            story = story[start_idx : start_idx + max_length]
+        stories.append(story)
+
+    lengths = np.array([len(story) for story in stories])
+    tokens_ids = pad_1D(stories)
 
     res = {
         "tokens_ids": tokens_ids,
@@ -51,7 +58,8 @@ def random_end_lengths(lengths: Tensor) -> Tensor:
     # 今回はFlash Attentionのために特殊なマスクを使用するため、
     # lengthsを、50%の確率でランダムな長さに変更する形を取る。
     with torch.no_grad():
-        end_lengths = (torch.rand_like(lengths, dtype=torch.float) * lengths).long()
+        # 最小でも1以上の長さを保証する
+        end_lengths = (torch.rand_like(lengths, dtype=torch.float) * (lengths - 1) + 1).long()
         mask = torch.rand_like(lengths, dtype=torch.float) < 0.5
         end_lengths = end_lengths * mask + lengths * ~mask
     return end_lengths

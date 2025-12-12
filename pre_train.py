@@ -59,8 +59,7 @@ def validate(
         all_loss / len(test_loader),
         epoch if epoch is not None else step,
     )
-
-
+    model.train()
 def train(
     config: SLMConfig,
     model: Decoder,

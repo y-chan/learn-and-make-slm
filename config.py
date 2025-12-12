@@ -59,13 +59,14 @@ class TrainConfig(YamlConfig):
     manual_seed: int
     epochs: int
     batch_size: int
+    max_length: int
     learning_rate: float
     betas: list[float]
     weight_decay: float
     lr_decay: float
     save_epochs: int
-    validation_epochs: int
     logging_steps: int
+    gradient_accumulation_steps: int
 
 
 @dataclasses.dataclass

@@ -79,16 +79,23 @@ class GPT2Decoder(nn.Module):
         self,
         pred_y: Float[Tensor, "B S V={self.n_vocab}"],
         target_y_index: Int[Tensor, "B S"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None
+        seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "1"]:
         pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
-        if seq_lens:
-            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=pred_y.size(-1))
 
-            # 関係ないところに逆伝播が流れないようにマスクする
-            pred_y = pred_y * non_pad_mask
+        # cross_entropyはreduction='none'で各位置のlossを計算し、
+        # 後でmaskを適用して平均を取る
+        loss: Float[Tensor, "B S"] = nn.functional.cross_entropy(pred_y, target_y_index, reduction="none")
 
-        loss: Float[Tensor, "1"] = nn.functional.cross_entropy(pred_y, target_y_index)
+        if seq_lens is not None:
+            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=loss.size(-1)).to(loss.device)
+            # パディング位置のlossを0にする
+            loss = loss * non_pad_mask
+            # 有効な位置の平均を取る（division by zeroを防ぐため最小値1を保証）
+            loss = loss.sum() / torch.clamp(non_pad_mask.sum(), min=1.0)
+        else:
+            loss = loss.mean()
+
         return loss
 
 

@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from config import SLMConfig
-from dataset import SimpleStoriesBothDataset, dataset_collate, random_end_lengths
+from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
 from models.transformer.decoder import Decoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
@@ -34,7 +34,7 @@ def validate(
 
     with torch.no_grad():
         for _batch in tqdm(test_loader, desc="Validation", dynamic_ncols=True, position=2):
-            batch = to_device(_batch, next(model.parameters()).device)
+            batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
             # randomized_lengths = random_end_lengths(batch["lengths"] - 1)
             seq_lengths = batch["lengths"] - 1
 
@@ -114,7 +114,7 @@ def train(
         for batch_step, _batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch}", dynamic_ncols=True, position=1)):
             try:
                 # データをGPUに転送
-                batch = to_device(_batch, next(model.parameters()).device)
+                batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
                 randomized_lengths = random_end_lengths(batch["lengths"] - 1)
 
                 # === Gradient Accumulationサイクルの開始 ===

@@ -1,9 +1,23 @@
+from typing import TypedDict
 import datasets
 from torch import Tensor
 from torch.utils.data import Dataset
 import numpy as np
 import torch
 from utils.pad import pad_1D
+
+
+class SimpleStoriesBatchNumpy(TypedDict):
+    tokens_ids: np.ndarray
+    lengths: np.ndarray
+
+
+class SimpleStoriesBatchTorch(TypedDict):
+    tokens_ids: Tensor
+    lengths: Tensor
+
+
+SimpleStoriesBatch = SimpleStoriesBatchNumpy | SimpleStoriesBatchTorch
 
 
 class SimpleStoriesBothDataset(Dataset):
@@ -28,7 +42,7 @@ class SimpleStoriesBothDataset(Dataset):
         return self
 
 
-def dataset_collate(batch, torch_convert: bool = True, max_length: int = 512) -> dict[str, np.ndarray] | dict[str, Tensor]:
+def dataset_collate(batch, torch_convert: bool = True, max_length: int = 512) -> SimpleStoriesBatch:
     # max_lengthを超えるサンプルについては、ランダムな開始地点からカットする
     stories = []
     for x in batch:

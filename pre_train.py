@@ -24,7 +24,7 @@ def validate(
     step: int | None = None,
 ):
     assert (epoch is not None and step is None) or (epoch is None and step is not None), (
-        "Either epoch or step must be provided, but not both"
+        f"Exactly one of 'epoch' or 'step' must be provided (not both, not neither). Got: epoch={epoch!r}, step={step!r}"
     )
 
     model.eval()

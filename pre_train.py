@@ -10,13 +10,13 @@ from tqdm import tqdm
 
 from config import SLMConfig
 from dataset import SimpleStoriesBothDataset, dataset_collate, random_end_lengths
-from models.transformer.decoder import GPT2Decoder
+from models.transformer.decoder import Decoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
 
 
 def validate(
-    model: GPT2Decoder,
+    model: Decoder,
     test_loader: torch.utils.data.DataLoader,
     test_writer: SummaryWriter,
     tokenizer: tiktoken.Encoding,
@@ -63,7 +63,7 @@ def validate(
 
 def train(
     config: SLMConfig,
-    model: GPT2Decoder,
+    model: Decoder,
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     test_loader: torch.utils.data.DataLoader,
@@ -236,7 +236,7 @@ def main():
     tokenizer = tiktoken.get_encoding(config.tokenizer)
 
     # モデルの初期化
-    model = GPT2Decoder(
+    model = Decoder(
         tokenizer.n_vocab, config.model.n_layers, config.model.d_model, config.model.n_heads, tokenizer.eot_token
     )
     # モデルをGPU/CPUに転送

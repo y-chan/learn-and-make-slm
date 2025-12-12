@@ -1,3 +1,4 @@
+import torch
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear
@@ -41,10 +42,18 @@ class Decoder(nn.Module):
         seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "1"]:
         pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
+
+        # cross_entropyはreduction='none'で各位置のlossを計算し、
+        # 後でmaskを適用して平均を取る
+        loss: Float[Tensor, "B S"] = nn.functional.cross_entropy(pred_y, target_y_index, reduction="none")
+
         if seq_lens is not None:
-            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=pred_y.size(-1))
+            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=loss.size(-1)).to(loss.device)
+            # パディング位置のlossを0にする
+            loss = loss * non_pad_mask
+            # 有効な位置の平均を取る（division by zeroを防ぐため最小値1を保証）
+            loss = loss.sum() / torch.clamp(non_pad_mask.sum(), min=1.0)
+        else:
+            loss = loss.mean()
 
-            pred_y = pred_y * non_pad_mask
-
-        loss: Float[Tensor, "1"] = nn.functional.cross_entropy(pred_y, target_y_index)
         return loss

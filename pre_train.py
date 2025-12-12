@@ -208,7 +208,7 @@ def train(
 
         # === 検証 ===
         # テストデータで性能を評価し、サンプルテキストを生成
-        validate(model, test_loader, test_writer, tokenizer, epoch=1)
+        validate(model, test_loader, test_writer, tokenizer, epoch=epoch)
 
     # === 学習終了後の後処理 ===
     # TensorBoardのWriterを閉じる

@@ -3,8 +3,11 @@ from torch import Tensor, LongTensor, device as TorchDevice
 
 def to_device(data: dict, device: TorchDevice):
     """Move data to device."""
+    new_data = {}
     for k, v in data.items():
         if isinstance(v, Tensor):
-            data[k] = v.to(device, non_blocking=True)
+            new_data[k] = v.to(device, non_blocking=True)
+        else:
+            new_data[k] = v
 
-    return data
+    return new_data

@@ -52,7 +52,7 @@ def validate(
                     output_text = tokenizer.decode(output_tokens_ids[0].tolist())
                     test_writer.add_text(f"Text/{i}/GT", gt_text, 0)
                     test_writer.add_text(f"Text/{i}/Output", output_text, epoch)
-                count += batch["tokens_ids"].size(0)
+                count += min(batch["tokens_ids"].size(0), 5 - count)
 
     test_writer.add_scalar(
         f"Loss/{'Epoch' if epoch is not None else 'Step'}_Test",

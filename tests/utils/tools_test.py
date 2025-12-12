@@ -49,7 +49,7 @@ def test_to_device_preserves_non_tensor_values():
     assert result["list"] == [1, 2, 3]
 
 
-def test_to_device_returns_same_dict():
+def test_to_device_returns_new_dict():
     device = torch.device("cpu")
     data = {
         "tensor": torch.randn(2, 3),
@@ -57,7 +57,7 @@ def test_to_device_returns_same_dict():
 
     result = to_device(data, device)
 
-    assert result is data
+    assert result is not data
 
 
 # GPU tests

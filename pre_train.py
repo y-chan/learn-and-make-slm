@@ -255,18 +255,17 @@ def main():
 
     # 学習途中から再開する場合、最新のチェックポイントを読み込む
     model_dir = Path(config.path.log_dir)
-    try:
+    checkpoint_path = latest_checkpoint_path(model_dir, "checkpoint_*.pth")
+    if checkpoint_path is not None:
         start_epoch = (
             load_checkpoint(
-                latest_checkpoint_path(model_dir, "checkpoint_*.pth"),
+                checkpoint_path,
                 model,
                 optimizer,
             )
             + 1
         )
-    except Exception as e:
-        # チェックポイントが見つからない場合は、エポック1から開始
-        print(e)
+    else:
         start_epoch = 1
 
     # データセットの準備

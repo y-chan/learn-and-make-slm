@@ -1,5 +1,6 @@
 import os
 import glob
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -43,8 +44,9 @@ def save_checkpoint(
     printf("Saved!")
 
 
-def latest_checkpoint_path(dir_path: str, regex: str):
+def latest_checkpoint_path(dir_path: str | Path, regex: str) -> Optional[str]:
     f_list = glob.glob(os.path.join(dir_path, regex))
     f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
-    x = f_list[-1]
-    return x
+    if len(f_list) == 0:
+        return None
+    return f_list[-1]

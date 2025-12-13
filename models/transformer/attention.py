@@ -91,6 +91,7 @@ class ScaledDotProductAttention(nn.Module):
         # 系列を結合していたものをバッチごとに分割する
         list_out: list[Float[Tensor, "1 S_i H D={self.d_k}"]] = attn_bias.split(out)
         # もとの形状に戻す
+        # もとの形状に戻す際、後段の計算を安定させるため+reference実装に合わせるため0で初期化された行列を使う
         padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.zeros_like(Q)
         for i, out_elem in enumerate(list_out):
             if seq_lens is not None:

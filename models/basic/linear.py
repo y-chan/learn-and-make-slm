@@ -1,29 +1,6 @@
-from torch import SymInt, Tensor, nn, randn, where
+from torch import Tensor, nn
 
-
-def nonzero_randn(*shape: int | SymInt, epsilon: float = 1e-6) -> Tensor:
-    """
-    Generates a random Tensor with no zero elements.
-
-    Parameters
-    ----------
-    shape : tuple[int, SymInt]
-
-    epsilon : float
-        A minimum absolute value for the elements.
-
-    Returns
-    -------
-    Tensor
-        Generated random Tensor.
-    """
-    if epsilon <= 0:
-        msg = f"epsilon must be positive, but got {epsilon}"
-        raise ValueError(msg)
-
-    x = randn(*shape)
-    mask = x.abs() < epsilon
-    return where(mask, epsilon * x.sign(), x)
+from utils.randn import nonzero_randn
 
 
 class Linear(nn.Module):
@@ -42,8 +19,9 @@ class Linear(nn.Module):
 
         # NOTE: 一旦適当な行列で初期化しておくと、iteration ごとにいい感じの Tensor に収束していくので
         # 具体的な中身の Tensor を気にする必要はない。ただし要素に 0 があると影響が出る可能性があるので避けたい。
-        self.weight = nn.Parameter(nonzero_randn(out_features, in_features))
-        self.bias = nn.Parameter(nonzero_randn(out_features))
+        # また、in_featuresで割ることで、重みのスケールを安定させる。
+        self.weight = nn.Parameter(nonzero_randn(out_features, in_features) * (in_features**-0.5))
+        self.bias = nn.Parameter(nonzero_randn(out_features) * (out_features**-0.5))
 
     def forward(self, x: Tensor) -> Tensor:
         # y = w * x + b

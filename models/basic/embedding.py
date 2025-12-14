@@ -1,5 +1,6 @@
 from torch import nn, Tensor
-import torch
+
+from utils.randn import nonzero_randn
 
 
 class Embedding(nn.Module):
@@ -8,7 +9,8 @@ class Embedding(nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         # self.one_hot_vec = torch.eye(num_embeddings)
-        self.w = nn.Parameter(torch.randn(num_embeddings, embedding_dim))
+        # NOTE: Linearモジュールのコメントを参照
+        self.w = nn.Parameter(nonzero_randn(num_embeddings, embedding_dim) * (embedding_dim**-0.5))
 
     def forward(self, x: Tensor) -> Tensor:
         # one_hot = self.one_hot_vec[x]

@@ -8,6 +8,7 @@ from jaxtyping import Float, Bool, Int, jaxtyped
 from beartype import beartype as typechecker
 
 from utils.mask import make_pad_mask
+from models.transformer.rope import RotaryPositionalEncoding
 
 try:
     import xformers.ops as xops  # type: ignore
@@ -27,7 +28,6 @@ class ScaledDotProductAttention(nn.Module):
         self.softmax = Softmax()
         self.scale = 1.0 / torch.sqrt(torch.tensor(d_k, dtype=torch.float32))
 
-    @jaxtyped(typechecker=typechecker)
     def xformers_forward(
         self,
         Q: Float[Tensor, "B H S D={self.d_k}"],
@@ -101,7 +101,6 @@ class ScaledDotProductAttention(nn.Module):
         padded_out: Float[Tensor, "B H S D={self.d_k}"] = padded_out.transpose(1, 2)
         return padded_out
 
-    @jaxtyped(typechecker=typechecker)
     def reference_forward(
         self,
         Q: Float[Tensor, "B H S D={self.d_k}"],
@@ -122,7 +121,6 @@ class ScaledDotProductAttention(nn.Module):
         output = attn_weights @ V
         return output
 
-    @jaxtyped(typechecker=typechecker)
     def forward(
         self,
         Q: Float[Tensor, "B H S D={self.d_k}"],
@@ -139,7 +137,7 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int):
+    def __init__(self, d_model: int, n_heads: int, use_rope: bool = False):
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads")
@@ -150,6 +148,7 @@ class MultiHeadAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
+        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope == True else None
 
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         # x: (batch_size, seq_len, d_model)
@@ -164,6 +163,10 @@ class MultiHeadAttention(nn.Module):
             self.linear_v(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )  # (batch_size, n_heads, seq_len, d_k)
 
+        if self.rope is not None:
+            Q = self.rope(Q)
+            K = self.rope(K)
+
         attention = self.attention(Q, K, V, mask)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
@@ -172,7 +175,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class GroupedQueryAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, n_groups: int):
+    def __init__(self, d_model: int, n_heads: int, n_groups: int, use_rope: bool = False):
         super().__init__()
         assert n_heads % n_groups == 0
         self.d_model = d_model
@@ -184,8 +187,8 @@ class GroupedQueryAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model // n_groups)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
+        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope == True else None
 
-    @jaxtyped(typechecker=typechecker)
     def forward(
         self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None
     ) -> Float[Tensor, "B S D"]:
@@ -211,6 +214,10 @@ class GroupedQueryAttention(nn.Module):
         V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
         V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
         V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
+
+        if self.rope is not None:
+            Q = self.rope(Q)
+            K = self.rope(K)
 
         attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)

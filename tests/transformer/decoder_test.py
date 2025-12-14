@@ -2,6 +2,7 @@ import torch
 
 from models.transformer.decoder import Decoder
 
+
 def test_decoder_shape():
     """Decoderの順伝播の出力形状を確認"""
     batch_size = 2

@@ -12,6 +12,7 @@ def test_rope_shape():
 
     assert y.shape == x.shape
 
+
 # 以下AIが作成したテスト
 def test_rope_manual_calculation():
     """小さな例で手計算した結果と比較"""
@@ -37,7 +38,7 @@ def test_rope_manual_calculation():
     # x * cos + rotate_half(x) * sin = [1,1,1,1] * 1 + [-1,1,-1,1] * 0 = [1,1,1,1]
     expected[0] = torch.tensor([1.0, 1.0, 1.0, 1.0])
 
-    # pos=1の場合: 
+    # pos=1の場合:
     # x = [1, 1, 1, 1]
     # rotate_half(x) = [-1, 1, -1, 1]  # (x2の符号反転, x1) のペア
     # cos = [cos(1.0), cos(1.0), cos(theta_1), cos(theta_1)]
@@ -49,12 +50,7 @@ def test_rope_manual_calculation():
     sin_1 = math.sin(1.0)
     cos_theta_1 = math.cos(theta_1)
     sin_theta_1 = math.sin(theta_1)
-    expected[1] = torch.tensor([
-        cos_1 - sin_1,
-        cos_1 + sin_1,
-        cos_theta_1 - sin_theta_1,
-        cos_theta_1 + sin_theta_1
-    ])
+    expected[1] = torch.tensor([cos_1 - sin_1, cos_1 + sin_1, cos_theta_1 - sin_theta_1, cos_theta_1 + sin_theta_1])
 
     # 実装をテスト
     rope = RotaryPositionalEncoding(dim=dim)

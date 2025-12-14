@@ -1,6 +1,7 @@
 import torch
 from models.transformer.decoder_layer import DecoderLayer
 
+
 def test_decoder_layer_shape():
     """DecoderLayerの出力計上を確認"""
     batch_size = 2

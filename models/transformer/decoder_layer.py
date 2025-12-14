@@ -5,6 +5,7 @@ from models.basic.layer_norm import LayerNorm
 from jaxtyping import Float, Int
 from typing import Optional
 
+
 class DecoderLayer(nn.Module):
     def __init__(self, d_model: int, n_heads: int, n_groups: int):
         super().__init__()
@@ -17,7 +18,9 @@ class DecoderLayer(nn.Module):
         self.ffn = FeedForwardSwiGLU(d_model=d_model)
         self.norm2 = LayerNorm(d_model)
 
-    def forward(self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None) -> Float[Tensor, "B S D"]:
+    def forward(
+        self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None
+    ) -> Float[Tensor, "B S D"]:
         # masked multi-head self-attention
         attn_output: Float[Tensor, "B S D"] = self.self_attn(x, seq_lens)
         x = self.norm1(x + attn_output)

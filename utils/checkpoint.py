@@ -15,7 +15,7 @@ def load_checkpoint(
     printf=tqdm.write,
 ) -> int:
     assert os.path.isfile(checkpoint_path)
-    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     epoch = checkpoint_dict["epoch"]
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint_dict["optimizer"])

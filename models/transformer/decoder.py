@@ -4,6 +4,7 @@ import tiktoken
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear
+from models.basic.softmax import SoftmaxWithTemperature
 from jaxtyping import Float, Int, Bool
 from typing import Optional
 from models.basic.embedding import Embedding
@@ -23,6 +24,8 @@ class Decoder(nn.Module):
         )
         self.linear_out = Linear(d_model, n_vocab)
 
+        self.softmax = SoftmaxWithTemperature()
+
     def forward(
         self,
         x: Int[Tensor, "B S"],
@@ -41,6 +44,7 @@ class Decoder(nn.Module):
         self,
         starts: Int[Tensor, "1 S"],
         max_token_count: Optional[int] = None,
+        temperature: float = 0.0,
         tokenizer: Optional[tiktoken.Encoding] = None,
     ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
@@ -56,10 +60,21 @@ class Decoder(nn.Module):
             loop_condition = lambda count: count < max_token_count
 
         while loop_condition(count=count):
+            output = self(x.detach().clone())
             # TODO: temperatureなどを考慮したサンプリングを実装する
             # TODO: KVキャッシュを考慮した形にする
-            # argmax: Greedy Encodingによる最も確率の高いトークンを選択
-            next_token = self(x.detach().clone()).argmax(dim=-1)[:, -1:]
+            if temperature == 0.0:
+                # argmax: Greedy Encodingによる最も確率の高いトークンを選択
+                next_token = output.argmax(dim=-1)[:, -1:]
+            else:
+                output_prob = self.softmax(output, temperature)
+                # ここからAI
+                # 最後の位置の確率分布からサンプリング
+                # output_prob[:, -1, :] の形状は [B, V]
+                next_token_probs = output_prob[:, -1, :]  # [B, V]
+                # torch.multinomialでカテゴリカル分布からサンプリング
+                next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
+
             x = torch.cat([x, next_token], dim=-1)
             count += 1
             if next_token[0, 0] == self.end_token_id:

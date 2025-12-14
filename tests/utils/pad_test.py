@@ -14,7 +14,7 @@ def test_pad_1d_basic():
 def test_pad_1d_custom_pad_value():
     inputs = [np.array([1, 2]), np.array([3, 4, 5, 6])]
 
-    result = pad_1D(inputs, pad=-1)
+    result = pad_1D(inputs, pad=-1.0)
 
     expected = np.array([[1, 2, -1, -1], [3, 4, 5, 6]])
     np.testing.assert_array_equal(result, expected)

@@ -24,11 +24,11 @@ from torch import Tensor
 
 
 class Cache(ABC):
-    def __init__(self) -> None:
-        self.key: torch.Tensor
-        self.value: torch.Tensor
-        self.dtype: torch.dtype
-        self.device: torch.device
+    def __init__(self, key: Float[Tensor, "B H S D"], value: Float[Tensor, "B H S D"]) -> None:
+        self.key: torch.Tensor = key
+        self.value: torch.Tensor = value
+        self.dtype: torch.dtype = key.dtype
+        self.device: torch.device = key.device
 
     def offload(self) -> None:
         """
@@ -64,12 +64,6 @@ class Cache(ABC):
 
 
 class CacheEntry(Cache):
-    def __init__(self, key: Float[Tensor, "B H S D"], value: Float[Tensor, "B H S D"]) -> None:
-        self.key = key
-        self.value = value
-        self.dtype = key.dtype
-        self.device = key.device
-
     def update(
         self, new_key: Float[Tensor, "B H S_new D"], new_value: Float[Tensor, "B H S_new D"]
     ) -> tuple[Float[Tensor, "B H S_total D"], Float[Tensor, "B H S_total D"]]:
@@ -94,7 +88,7 @@ class KVCache:
     def reset(self, index: int) -> None:
         self.cache[index].reset()
 
-    def append(self, key: Float[Tensor, "B H S D"], value: Float[Tensor, "B H S D"]) -> int:
+    def append(self, cache_class: type[Cache], key: Float[Tensor, "B H S D"], value: Float[Tensor, "B H S D"]) -> int:
         """
         Append a KV pair and return its index.
 
@@ -108,8 +102,8 @@ class KVCache:
         int
             The index of the appended KV pair.
         """
-
-        self.cache.append(CacheEntry(key, value))
+        e = cache_class(key=key, value=value)
+        self.cache.append(e)
         return len(self.cache) - 1
 
     def update(

@@ -1,7 +1,6 @@
 import torch
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
-from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from jaxtyping import Float, Int, Bool
 from typing import Optional
@@ -21,7 +20,6 @@ class Decoder(nn.Module):
             [DecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups) for _ in range(n_layers)]
         )
         self.linear_out = Linear(d_model, n_vocab)
-        self.softmax = Softmax()
 
     def forward(
         self, x: Int[Tensor, "B S"], seq_lens: Optional[Int[Tensor, "B"]] = None

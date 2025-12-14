@@ -137,6 +137,7 @@ def make_non_pad_mask(
     lengths: Union[LongTensor, List[int]],
     xs: Optional[Tensor] = None,
     length_dim: int = -1,
+    maxlen: Optional[int] = None,
 ):
     """Make mask tensor containing indices of non-padded part.
     Args:
@@ -214,4 +215,4 @@ def make_non_pad_mask(
                  [1, 1, 0, 0, 0, 0],
                  [1, 1, 0, 0, 0, 0]]], dtype=torch.uint8)
     """
-    return ~make_pad_mask(lengths, xs, length_dim)
+    return ~make_pad_mask(lengths, xs, length_dim, maxlen)

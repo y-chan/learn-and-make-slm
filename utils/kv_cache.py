@@ -130,5 +130,4 @@ class KVCache:
         tuple[Float[Tensor, "B H S_total D"], Float[Tensor, "B H S_total D"]]
             The updated key and value tensors.
         """
-        # TODO: index existence check
         return self.cache[index].update(new_key, new_value)

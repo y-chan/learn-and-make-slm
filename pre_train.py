@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import dataclasses
 import os
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import tiktoken
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import yaml
 
 from config import SLMConfig
 from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
@@ -80,6 +82,10 @@ def train(
 
     train_writer = SummaryWriter(log_dir=train_log_dir)
     test_writer = SummaryWriter(log_dir=test_log_dir)
+
+    # 学習時に用いた設定を保存
+    with open(train_log_dir / "config.yaml", "w") as f:
+        yaml.dump(dataclasses.asdict(config), f, default_flow_style=False, allow_unicode=True)
 
     # float16を使って計算を高速化する仕組み(Mixed Precision Training: AMP/混合精度訓練)を設定
     # GradScalerは勾配のスケーリングを自動で行い、数値の安定性を保つ

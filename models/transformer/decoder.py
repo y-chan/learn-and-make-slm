@@ -24,7 +24,9 @@ class Decoder(nn.Module):
         self.linear_out = Linear(d_model, n_vocab)
 
     def forward(
-        self, x: Int[Tensor, "B S"], seq_lens: Optional[Int[Tensor, "B"]] = None
+        self,
+        x: Int[Tensor, "B S"],
+        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 
@@ -35,7 +37,12 @@ class Decoder(nn.Module):
         return output
 
     @torch.no_grad()
-    def infer(self, starts: Int[Tensor, "1 S"], max_token_count: Optional[int] = None, tokenizer: Optional[tiktoken.Encoding] = None) -> Int[Tensor, "1 S"]:
+    def infer(
+        self,
+        starts: Int[Tensor, "1 S"],
+        max_token_count: Optional[int] = None,
+        tokenizer: Optional[tiktoken.Encoding] = None,
+    ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
         x = starts
         count = 0
@@ -66,7 +73,7 @@ class Decoder(nn.Module):
         self,
         pred_y: Float[Tensor, "B S V={self.n_vocab}"],
         target_y_index: Int[Tensor, "B S"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,
+        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
     ) -> Float[Tensor, "1"]:
         pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
 

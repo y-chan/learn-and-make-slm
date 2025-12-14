@@ -19,7 +19,9 @@ class DecoderLayer(nn.Module):
         self.norm2 = LayerNorm(d_model)
 
     def forward(
-        self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None
+        self,
+        x: Float[Tensor, "B S D={self.d_model}"],
+        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         # masked multi-head self-attention
         attn_output: Float[Tensor, "B S D"] = self.self_attn(x, seq_lens)

@@ -63,4 +63,4 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pytest.ini_options]
-addopts = "--jaxtyping-packages=models,beartype.beartype"
+addopts = "--jaxtyping-packages=models,utils,beartype.beartype"

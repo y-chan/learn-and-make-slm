@@ -238,7 +238,12 @@ def main():
 
     # モデルの初期化
     model = Decoder(
-        tokenizer.n_vocab, config.model.n_layers, config.model.d_model, config.model.n_heads, tokenizer.eot_token
+        tokenizer.n_vocab,
+        config.model.n_layers,
+        config.model.d_model,
+        config.model.n_heads,
+        config.model.n_groups,
+        tokenizer.eot_token,
     )
     # モデルをGPU/CPUに転送
     model.to(device)

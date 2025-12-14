@@ -3,7 +3,6 @@ from torch import nn, Tensor
 import torch
 from models.basic.softmax import Softmax
 from models.basic.linear import Linear
-from typing import Optional
 from jaxtyping import Float, Bool, Int
 
 from utils.mask import make_pad_mask
@@ -32,7 +31,7 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B H S D"]:
         """
         xformersの`memory_efficient_attention`を用いてSDPAを計算する。
@@ -105,7 +104,7 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B H S D"]:
         scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
         if seq_lens is not None:
@@ -125,7 +124,7 @@ class ScaledDotProductAttention(nn.Module):
         Q: Float[Tensor, "B H S D={self.d_k}"],
         K: Float[Tensor, "B H S D"],
         V: Float[Tensor, "B H S D"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Tensor:
         try:
             return self.xformers_forward(Q, K, V, seq_lens)
@@ -149,7 +148,7 @@ class MultiHeadAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
-    def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, mask: Tensor | None = None) -> Tensor:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
         Q = (
@@ -191,7 +190,7 @@ class GroupedQueryAttention(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "B S D={self.d_model}"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
         Q: Float[Tensor, "B H={self.n_heads} S D"] = (

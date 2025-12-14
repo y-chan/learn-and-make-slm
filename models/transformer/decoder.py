@@ -10,10 +10,11 @@ from utils.mask import make_non_pad_mask
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_layers: int, d_model: int, n_heads: int, n_groups: int, n_vocab: int):
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
+        self.end_token_id = end_token_id
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
@@ -23,7 +24,7 @@ class Decoder(nn.Module):
         self.softmax = Softmax()
 
     def forward(
-        self, x: Float[Tensor, "B S"], seq_lens: Optional[Int[Tensor, "B"]] = None
+        self, x: Int[Tensor, "B S"], seq_lens: Optional[Int[Tensor, "B"]] = None
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 

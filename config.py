@@ -52,6 +52,7 @@ class PathConfig(YamlConfig):
 class ModelConfig(YamlConfig):
     d_model: int
     n_heads: int
+    n_groups: int
     n_layers: int
 
 

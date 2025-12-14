@@ -13,6 +13,6 @@ def test_decoder_layer_shape():
     x = torch.rand(batch_size, seq_len, d_model)
 
     decoder_layer = DecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups)
-    output = decoder_layer(x, seq_lens=torch.tensor([seq_len]))
+    output = decoder_layer(x, seq_lens=torch.tensor([seq_len, seq_len]))
 
     assert output.shape == (batch_size, seq_len, d_model)

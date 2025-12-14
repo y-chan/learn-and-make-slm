@@ -1,4 +1,4 @@
-from torch import Tensor, LongTensor, device as TorchDevice
+from torch import Tensor, device as TorchDevice
 
 
 def to_device(data: dict, device: TorchDevice):

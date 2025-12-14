@@ -38,7 +38,7 @@ class Cache(ABC):
         self, new_key: Float[Tensor, "B H S_new D"], new_value: Float[Tensor, "B H S_new D"]
     ) -> tuple[Float[Tensor, "B H S_total D"], Float[Tensor, "B H S_total D"]]:
         """
-        Concatenate new key and value tensors to the existing ones.
+        Update the cache with new key and value tensors.
 
         Returns
         -------

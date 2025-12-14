@@ -1,3 +1,4 @@
+import pytest
 import torch
 from utils.kv_cache import KVCache
 
@@ -38,3 +39,51 @@ def test_kv_cache_update_reset():
     kv_cache.reset(idx)
     assert torch.all(kv_cache.cache[idx].key == 0)
     assert torch.all(kv_cache.cache[idx].value == 0)
+
+
+def test_kv_cache_offload_prefetch_cpu_roundtrip():
+    torch.manual_seed(0)
+    kv_cache = KVCache()
+
+    key = torch.randn(1, 2, 3, 4)
+    value = torch.randn(1, 2, 3, 4)
+    original_key = key.clone()
+    original_value = value.clone()
+
+    idx = kv_cache.append(key, value)
+
+    kv_cache.offload(idx)
+    assert kv_cache.cache[idx].key.device.type == "cpu"
+    assert kv_cache.cache[idx].value.device.type == "cpu"
+
+    kv_cache.prefetch(idx)
+    assert kv_cache.cache[idx].key.device.type == original_key.device.type
+    assert kv_cache.cache[idx].value.device.type == original_value.device.type
+
+    torch.testing.assert_close(kv_cache.cache[idx].key, original_key)
+    torch.testing.assert_close(kv_cache.cache[idx].value, original_value)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_kv_cache_offload_prefetch_cuda_roundtrip():
+    torch.manual_seed(0)
+    kv_cache = KVCache()
+
+    device = torch.device("cuda")
+    key = torch.randn(1, 2, 3, 4, device=device)
+    value = torch.randn(1, 2, 3, 4, device=device)
+    original_key = key.clone()
+    original_value = value.clone()
+
+    idx = kv_cache.append(key, value)
+
+    kv_cache.offload(idx)
+    assert kv_cache.cache[idx].key.device.type == "cpu"
+    assert kv_cache.cache[idx].value.device.type == "cpu"
+
+    kv_cache.prefetch(idx)
+    assert kv_cache.cache[idx].key.device == device
+    assert kv_cache.cache[idx].value.device == device
+
+    torch.testing.assert_close(kv_cache.cache[idx].key, original_key)
+    torch.testing.assert_close(kv_cache.cache[idx].value, original_value)

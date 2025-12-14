@@ -14,17 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union, List, Optional
 
 import torch
 from torch import LongTensor, Tensor
 
 
 def make_pad_mask(
-    lengths: Union[LongTensor, List[int]],
-    xs: Optional[Tensor] = None,
+    lengths: LongTensor | list[int],
+    xs: Tensor | None = None,
     length_dim: int = -1,
-    maxlen: Optional[int] = None,
+    maxlen: int | None = None,
 ):
     """Make mask tensor containing indices of padded part.
     Args:
@@ -134,10 +133,10 @@ def make_pad_mask(
 
 
 def make_non_pad_mask(
-    lengths: Union[LongTensor, List[int]],
-    xs: Optional[Tensor] = None,
+    lengths: LongTensor | list[int],
+    xs: Tensor | None = None,
     length_dim: int = -1,
-    maxlen: Optional[int] = None,
+    maxlen: int | None = None,
 ):
     """Make mask tensor containing indices of non-padded part.
     Args:

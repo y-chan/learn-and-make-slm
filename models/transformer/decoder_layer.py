@@ -3,7 +3,6 @@ from models.transformer.attention import GroupedQueryAttention
 from models.transformer.feed_forward import FeedForwardSwiGLU
 from models.basic.layer_norm import LayerNorm
 from jaxtyping import Float, Int
-from typing import Optional
 
 
 class DecoderLayer(nn.Module):
@@ -21,7 +20,7 @@ class DecoderLayer(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "B S D={self.d_model}"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         # masked multi-head self-attention
         attn_output: Float[Tensor, "B S D"] = self.self_attn(x, seq_lens)

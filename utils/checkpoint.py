@@ -1,7 +1,6 @@
 import os
 import glob
 from pathlib import Path
-from typing import Optional
 
 import torch
 from torch import nn, optim
@@ -11,7 +10,7 @@ from tqdm import tqdm
 def load_checkpoint(
     checkpoint_path: str,
     model: nn.Module,
-    optimizer: Optional[optim.Optimizer] = None,
+    optimizer: optim.Optimizer | None = None,
     printf=tqdm.write,
 ) -> int:
     assert os.path.isfile(checkpoint_path)
@@ -44,7 +43,7 @@ def save_checkpoint(
     printf("Saved!")
 
 
-def latest_checkpoint_path(dir_path: str | Path, regex: str) -> Optional[str]:
+def latest_checkpoint_path(dir_path: str | Path, regex: str) -> str | None:
     f_list = glob.glob(os.path.join(dir_path, regex))
     f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
     if len(f_list) == 0:

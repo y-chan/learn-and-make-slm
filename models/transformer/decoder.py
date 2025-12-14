@@ -1,4 +1,3 @@
-import torch
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear
@@ -42,7 +41,7 @@ class Decoder(nn.Module):
         seq_lens: Optional[Int[Tensor, "B"]] = None,
     ) -> Float[Tensor, "1"]:
         pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
-        if seq_lens:
+        if seq_lens is not None:
             non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=pred_y.size(-1))
 
             pred_y = pred_y * non_pad_mask

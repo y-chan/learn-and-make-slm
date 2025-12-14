@@ -6,7 +6,6 @@ from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import SoftmaxWithTemperature
 from jaxtyping import Float, Int, Bool
-from typing import Optional
 from models.basic.embedding import Embedding
 from utils.mask import make_non_pad_mask
 
@@ -29,7 +28,7 @@ class Decoder(nn.Module):
     def forward(
         self,
         x: Int[Tensor, "B S"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 
@@ -43,10 +42,10 @@ class Decoder(nn.Module):
     def infer(
         self,
         starts: Int[Tensor, "1 S"],
-        max_token_count: Optional[int] = None,
+        max_token_count: int | None = None,
         temperature: float = 0.0,
-        top_k: Optional[int] = None,
-        tokenizer: Optional[tiktoken.Encoding] = None,
+        top_k: int | None = None,
+        tokenizer: tiktoken.Encoding | None = None,
     ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
         x = starts
@@ -91,7 +90,7 @@ class Decoder(nn.Module):
         self,
         pred_y: Float[Tensor, "B S V={self.n_vocab}"],
         target_y_index: Int[Tensor, "B S"],
-        seq_lens: Optional[Int[Tensor, "B"]] = None,  # noqa: F821
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "1"]:
         pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
 

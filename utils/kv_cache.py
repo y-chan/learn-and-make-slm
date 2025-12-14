@@ -85,17 +85,14 @@ class KVCache:
     def __len__(self) -> int:
         return len(self.cache)
 
-    def offload(self) -> None:
-        for entry in self.cache:
-            entry.offload()
+    def offload(self, index: int) -> None:
+        self.cache[index].offload()
 
-    def prefetch(self) -> None:
-        for entry in self.cache:
-            entry.prefetch()
+    def prefetch(self, index: int) -> None:
+        self.cache[index].prefetch()
 
-    def reset(self) -> None:
-        for entry in self.cache:
-            entry.reset()
+    def reset(self, index: int) -> None:
+        self.cache[index].reset()
 
     def append(self, key: Float[Tensor, "B H S D"], value: Float[Tensor, "B H S D"]) -> int:
         """

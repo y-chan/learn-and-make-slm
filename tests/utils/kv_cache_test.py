@@ -35,6 +35,6 @@ def test_kv_cache_update_reset():
     assert updated_key.shape == (1, 4, seq_len_1 + seq_len_2, 4)
     assert updated_value.shape == (1, 4, seq_len_1 + seq_len_2, 4)
 
-    kv_cache.reset()
+    kv_cache.reset(idx)
     assert torch.all(kv_cache.cache[idx].key == 0)
     assert torch.all(kv_cache.cache[idx].value == 0)

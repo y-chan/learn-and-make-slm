@@ -49,7 +49,7 @@ def dataset_collate(batch, torch_convert: bool = True, max_length: int = 512) ->
         story = np.array(x["story"], dtype=np.int64)
         if len(story) > max_length:
             # ランダムな開始地点を決定（0からlen(story) - max_lengthの間）
-            start_idx = np.random.randint(0, len(story) - max_length + 1)
+            start_idx = int(torch.randint(0, len(story) - max_length + 1, (1,)).item())
             story = story[start_idx : start_idx + max_length]
         stories.append(story)
 

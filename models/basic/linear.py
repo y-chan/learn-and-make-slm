@@ -19,7 +19,7 @@ class Linear(nn.Module):
 
         # NOTE: 一旦適当な行列で初期化しておくと、iteration ごとにいい感じの Tensor に収束していくので
         # 具体的な中身の Tensor を気にする必要はない。ただし要素に 0 があると影響が出る可能性があるので避けたい。
-        # また、in_featuresで割ることで、重みのスケールを安定させる。
+        # また、in_featuresで割ることで、学習の安定化を図る(Xavierの一様分布というらしい)
         self.weight = nn.Parameter(nonzero_randn(out_features, in_features) * (in_features**-0.5))
         self.bias = nn.Parameter(nonzero_randn(out_features) * (out_features**-0.5))
 

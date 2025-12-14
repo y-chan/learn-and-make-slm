@@ -1,4 +1,6 @@
 import torch
+import tiktoken
+
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear

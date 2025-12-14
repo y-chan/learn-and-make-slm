@@ -45,6 +45,7 @@ class Decoder(nn.Module):
         starts: Int[Tensor, "1 S"],
         max_token_count: Optional[int] = None,
         temperature: float = 0.0,
+        top_k: Optional[int] = None,
         tokenizer: Optional[tiktoken.Encoding] = None,
     ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
@@ -68,6 +69,8 @@ class Decoder(nn.Module):
                 next_token = output.argmax(dim=-1)[:, -1:]
             else:
                 output_prob = self.softmax(output, temperature)
+                if top_k is not None:
+                    output_prob = torch.topk(output_prob, top_k, dim=-1)[0]
                 # ここからAI
                 # 最後の位置の確率分布からサンプリング
                 # output_prob[:, -1, :] の形状は [B, V]

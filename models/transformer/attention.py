@@ -187,7 +187,7 @@ class GroupedQueryAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model // n_groups)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope == True else None
+        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
     def forward(
         self, x: Float[Tensor, "B S D={self.d_model}"], seq_lens: Optional[Int[Tensor, "B"]] = None

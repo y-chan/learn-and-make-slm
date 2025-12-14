@@ -8,7 +8,8 @@ class LayerNorm(nn.Module):
         self.normalized_shape = normalized_shape
         self.gamma = nn.Parameter(torch.ones(normalized_shape))
         self.beta = nn.Parameter(torch.zeros(normalized_shape))
-        self.eps = 1e-6
+        # PyTorchのデフォルト値
+        self.eps = 1e-5
 
     def forward(self, x: Tensor) -> Tensor:
         x_mean = x.mean(dim=-1, keepdim=True)

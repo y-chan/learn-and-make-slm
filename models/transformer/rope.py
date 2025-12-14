@@ -11,9 +11,6 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
 
 
 class RotaryPositionalEncoding(nn.Module):
-    cos: Tensor  # (max_seq_len, dim)
-    sin: Tensor  # (max_seq_len, dim)
-
     def __init__(self, dim: int, max_seq_len: int = 2048) -> None:
         super().__init__()
         if dim % 2 != 0:
@@ -23,6 +20,8 @@ class RotaryPositionalEncoding(nn.Module):
         self.max_seq_len = max_seq_len
 
         # Buffers move with the module and are optionally re-computed on demand.
+        self.cos: Tensor  # (max_seq_len, dim)
+        self.sin: Tensor  # (max_seq_len, dim)
         self.register_buffer("cos", torch.empty(0), persistent=False)
         self.register_buffer("sin", torch.empty(0), persistent=False)
 

@@ -18,7 +18,7 @@ def test_kv_cache_append_and_length():
     assert len(kv_cache) == 2
 
 
-def test_kv_cache_update():
+def test_kv_cache_update_reset():
     kv_cache = KVCache()
 
     seq_len_1 = 8
@@ -34,3 +34,7 @@ def test_kv_cache_update():
 
     assert updated_key.shape == (1, 4, seq_len_1 + seq_len_2, 4)
     assert updated_value.shape == (1, 4, seq_len_1 + seq_len_2, 4)
+
+    kv_cache.reset()
+    assert torch.all(kv_cache.cache[idx].key == 0)
+    assert torch.all(kv_cache.cache[idx].value == 0)

@@ -32,8 +32,33 @@ class Decoder(nn.Module):
         output = self.linear_out(x)
         return output
 
-    def infer(self):
-        raise NotImplementedError("Decoder.infer is not implemented yet.")
+    @torch.no_grad()
+    def infer(self, starts: Int[Tensor, "1 S"], max_token_count: Optional[int] = None, tokenizer: Optional[tiktoken.Encoding] = None) -> Int[Tensor, "1 S"]:
+        assert starts.size(0) == 1, "starts must be a 1D tensor"
+        x = starts
+        count = 0
+        if tokenizer is not None:
+            starts = tokenizer.decode(starts[0].tolist())
+            print("".join(starts), end="")
+
+        if max_token_count is None:
+            loop_condition = lambda count: True
+        else:
+            loop_condition = lambda count: count < max_token_count
+
+        while loop_condition(count=count):
+            # TODO: temperatureなどを考慮したサンプリングを実装する
+            # TODO: KVキャッシュを考慮した形にする
+            # argmax: Greedy Encodingによる最も確率の高いトークンを選択
+            next_token = self(x.detach().clone()).argmax(dim=-1)[:, -1:]
+            x = torch.cat([x, next_token], dim=-1)
+            count += 1
+            if next_token[0, 0] == self.end_token_id:
+                break
+            if tokenizer is not None:
+                next_token = tokenizer.decode([next_token.item()])
+                print(next_token[0], end="")
+        return x
 
     def loss(
         self,

@@ -47,7 +47,7 @@ class Decoder(nn.Module):
         count = 0
         if tokenizer is not None:
             starts = tokenizer.decode(starts[0].tolist())
-            print("".join(starts), end="")
+            print("".join(starts), end="", flush=True)
 
         if max_token_count is None:
             loop_condition = lambda count: True
@@ -65,7 +65,7 @@ class Decoder(nn.Module):
                 break
             if tokenizer is not None:
                 next_token = tokenizer.decode([next_token.item()])
-                print(next_token[0], end="")
+                print(next_token[0], end="", flush=True)
         return x
 
     def loss(

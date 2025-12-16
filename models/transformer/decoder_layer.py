@@ -10,7 +10,7 @@ class DecoderLayer(nn.Module):
         super().__init__()
         self.d_model = d_model
         # masked multi-head self-attention(grouped query attention)
-        self.self_attn = GroupedQueryAttention(d_model=d_model, n_heads=n_heads, n_groups=n_groups)
+        self.self_attn = GroupedQueryAttention(d_model=d_model, n_heads=n_heads, n_groups=n_groups, use_rope=True)
         self.norm1 = LayerNorm(d_model)
 
         # feed-forward
@@ -23,11 +23,15 @@ class DecoderLayer(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         # masked multi-head self-attention
+        residual = x
+        x = self.norm1(x)
         attn_output: Float[Tensor, "B S D"] = self.self_attn(x, seq_lens)
-        x = self.norm1(x + attn_output)
+        x = residual + attn_output
 
         # feed-forward
+        residual = x
+        x = self.norm2(x)
         ffn_output: Float[Tensor, "B S D"] = self.ffn(x)
-        x = self.norm2(x + ffn_output)
+        x = residual + ffn_output
 
         return x

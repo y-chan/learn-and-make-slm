@@ -2,13 +2,13 @@ import torch
 import math
 import pytest
 
-from models.transformer.rope import RotaryPositionalEncoding, rotate_half
+from models.transformer.rope import RotaryPositionalEmbedding, rotate_half
 
 
 def test_rope_shape():
     """形状が保存されることを確認"""
     x = torch.randn(10, 16)  # (seq_len, dim)
-    rope = RotaryPositionalEncoding(dim=16)
+    rope = RotaryPositionalEmbedding(dim=16)
     y = rope(x)
 
     assert y.shape == x.shape
@@ -54,7 +54,7 @@ def test_rope_manual_calculation():
     expected[1] = torch.tensor([cos_1 - sin_1, cos_1 + sin_1, cos_theta_1 - sin_theta_1, cos_theta_1 + sin_theta_1])
 
     # 実装をテスト
-    rope = RotaryPositionalEncoding(dim=dim)
+    rope = RotaryPositionalEmbedding(dim=dim)
     result = rope(x)
 
     assert torch.allclose(result, expected, atol=1e-6), f"Expected:\n{expected}\nGot:\n{result}"
@@ -63,7 +63,7 @@ def test_rope_manual_calculation():
 def test_rope_norm_preservation():
     """回転操作なのでノルムがほぼ保存されることを確認"""
     x = torch.randn(10, 16)  # (seq_len, dim)
-    rope = RotaryPositionalEncoding(dim=16)
+    rope = RotaryPositionalEmbedding(dim=16)
     y = rope(x)
 
     # RoPEは回転操作なので、各ベクトルのノルムは保存される
@@ -76,7 +76,7 @@ def test_rope_norm_preservation():
 def test_rope_relative_position():
     """相対位置が同じなら内積も同じになることを確認"""
     dim = 16
-    rope = RotaryPositionalEncoding(dim=dim)
+    rope = RotaryPositionalEmbedding(dim=dim)
 
     # 同じベクトルペアなら相対位置が同じなら内積も同じになるはず
     q_same = torch.ones(4, dim)
@@ -107,7 +107,7 @@ def test_rotate_half():
 def test_yarn_shape():
     """YaRNでも形状が保存されることを確認"""
     x = torch.randn(10, 64)  # (seq_len, dim)
-    yarn = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=4.0)
+    yarn = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=4.0)
     y = yarn(x)
 
     assert y.shape == x.shape
@@ -119,14 +119,14 @@ def test_yarn_attention_scale():
     scale_factor = 4.0
     expected_attention_scale = 0.1 * math.log(scale_factor) + 1.0
 
-    yarn = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=scale_factor)
+    yarn = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=scale_factor)
 
     assert abs(yarn.attention_scale - expected_attention_scale) < 1e-6
 
 
 def test_yarn_no_attention_scale_when_no_extension():
     """scale_factor=1.0のときはattention_scale=1.0"""
-    rope = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=1.0)
+    rope = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=1.0)
 
     assert rope.attention_scale == 1.0
 
@@ -134,7 +134,7 @@ def test_yarn_no_attention_scale_when_no_extension():
 def test_yarn_ramp_function_boundaries():
     """ランプ関数が境界で正しい値を返すことを確認"""
     dim = 64
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=4.0)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=4.0)
 
     # ランプ関数をテスト
     r = torch.arange(0, dim // 2, dtype=torch.float32)
@@ -156,8 +156,8 @@ def test_yarn_interpolation_high_freq_preserved():
     dim = 64
     scale_factor = 4.0
 
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
-    rope = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=1.0)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
+    rope = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=1.0)
 
     # 高周波次元（インデックス0, 1）のthetaを比較
     # YaRNでも高周波は補間されないので、RoPEと同じはず（attention_scaleの違いを除く）
@@ -177,8 +177,8 @@ def test_yarn_interpolation_low_freq_scaled():
     dim = 64
     scale_factor = 4.0
 
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
-    rope = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=1.0)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
+    rope = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=1.0)
 
     # 低周波次元（最後のインデックス）のthetaを比較
     # YaRNでは低周波はθ/sにスケールされるので、cos/sinの周期が長くなる
@@ -197,8 +197,8 @@ def test_yarn_differs_from_rope():
     """YaRNとRoPEで異なる結果が出ることを確認"""
     x = torch.randn(10, 64)
 
-    yarn = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=4.0)
-    rope = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=1.0)
+    yarn = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=4.0)
+    rope = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=1.0)
 
     y_yarn = yarn(x)
     y_rope = rope(x)
@@ -210,7 +210,7 @@ def test_yarn_differs_from_rope():
 def test_yarn_relative_position():
     """YaRNでも相対位置が同じなら内積も同じになることを確認"""
     dim = 64
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=4.0)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=4.0)
 
     q = torch.ones(4, dim)
     k = torch.ones(4, dim) * 2
@@ -228,7 +228,7 @@ def test_yarn_relative_position():
 def test_yarn_norm_scaling():
     """YaRNではノルムがattention_scaleでスケールされることを確認"""
     x = torch.randn(10, 64)
-    yarn = RotaryPositionalEncoding(dim=64, max_seq_len=2048, scale_factor=4.0)
+    yarn = RotaryPositionalEmbedding(dim=64, max_seq_len=2048, scale_factor=4.0)
     y = yarn(x)
 
     x_norms = torch.norm(x, dim=-1)
@@ -245,7 +245,7 @@ def test_yarn_dynamic_scaling():
     dim = 64
     original_max_seq_len = 2048
 
-    yarn = RotaryPositionalEncoding(
+    yarn = RotaryPositionalEmbedding(
         dim=dim,
         max_seq_len=original_max_seq_len,
         scale_factor=4.0,
@@ -269,7 +269,7 @@ def test_yarn_dynamic_scaling():
 def test_yarn_cache_update():
     """キャッシュが正しく更新されることを確認"""
     dim = 64
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=1024, scale_factor=4.0)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=1024, scale_factor=4.0)
 
     # 初期キャッシュサイズ
     assert yarn.cos.shape[0] == 1024
@@ -286,7 +286,7 @@ def test_yarn_cache_update():
 def test_yarn_various_scale_factors(scale_factor):
     """様々なscale_factorで正しく動作することを確認"""
     dim = 64
-    yarn = RotaryPositionalEncoding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
+    yarn = RotaryPositionalEmbedding(dim=dim, max_seq_len=2048, scale_factor=scale_factor)
 
     x = torch.randn(10, dim)
     y = yarn(x)

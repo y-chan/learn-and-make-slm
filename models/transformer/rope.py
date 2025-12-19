@@ -44,7 +44,7 @@ class RotaryPositionalEncoding(nn.Module):
             # Compute attention temperature scaling
             # sqrt(1/t) = 0.1 * ln(s) + 1
             self.attention_scale = 0.1 * math.log(max(scale_factor, 1.0)) + 1.0
-        else:  
+        else:
             # use normal RoPE
             self.attention_scale = 1.0
 
@@ -68,12 +68,12 @@ class RotaryPositionalEncoding(nn.Module):
     def _compute_ramp_function(self, r: Float[Tensor, "D"]) -> Float[Tensor, "D"]:  # noqa: F821
         """
         Compute the ramp function for NTK-by-parts interpolation.
-        
+
         Returns gamma where:
             gamma = 0 if r < low (high frequency dimensions, no interpolation)
             gamma = 1 if r > high (low frequency dimensions, full interpolation)
             gamma = (r - low)/(high - low) otherwise (smooth transition)
-        
+
         where r is the dimension index (0, 1, 2, ...) and low/high are
         thresholds computed from alpha, beta, and original_max_seq_len.
         """
@@ -128,11 +128,11 @@ class RotaryPositionalEncoding(nn.Module):
 
         # Compute rotations
         rotate = torch.outer(pos, thetas)  # (max_seq_len, dim)
-        
+
         # Apply attention scaling
         cos = torch.cos(rotate) * self.attention_scale
         sin = torch.sin(rotate) * self.attention_scale
-        
+
         return cos, sin
 
     def _update_cache(
@@ -167,14 +167,12 @@ class RotaryPositionalEncoding(nn.Module):
         self.max_seq_len = target_len
         self._cached_scale_factor = scale_factor
 
-    def forward(
-        self, x: Float[Tensor, "... seq_len {self.dim}"]
-    ) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
+    def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         """
         Apply YaRN rotary positional encoding to input tensor.
         """
         seq_len = x.size(-2)
-        
+
         # Dynamic scaling: adjust scale_factor based on current sequence length
         if self.enable_dynamic_scaling:
             assert self.scale_factor > 1.0, "Dynamic scaling is only supported for YaRN, not for normal RoPE"

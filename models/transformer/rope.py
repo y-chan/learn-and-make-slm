@@ -11,7 +11,7 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
     return rotated.reshape(*x.shape[:-2], -1)  # [..., dim]
 
 
-class RotaryPositionalEncoding(nn.Module):
+class RotaryPositionalEmbedding(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -20,7 +20,7 @@ class RotaryPositionalEncoding(nn.Module):
         enable_dynamic_scaling: bool = False,
     ) -> None:
         """
-        Rotary Positional Encoding (RoPE) and YaRN (Yet another RoPE extensioN method) implementation.
+        Rotary Positional Embedding (RoPE) and YaRN (Yet another RoPE extensioN method) implementation.
 
         Args:
             dim: Dimension of the embedding (must be even)
@@ -30,7 +30,7 @@ class RotaryPositionalEncoding(nn.Module):
         """
         super().__init__()
         if dim % 2 != 0:
-            raise ValueError("RotaryPositionalEncoding expects an even dimension.")
+            raise ValueError("RotaryPositionalEmbedding expects an even dimension.")
 
         self.dim = dim
         self.max_seq_len = max_seq_len

@@ -6,7 +6,7 @@ from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
 from utils.mask import make_pad_mask
-from models.transformer.rope import RotaryPositionalEncoding
+from models.transformer.rope import RotaryPositionalEmbedding
 
 try:
     import xformers.ops as xops  # type: ignore
@@ -146,7 +146,7 @@ class MultiHeadAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
+        self.rope = RotaryPositionalEmbedding(d_model // n_heads) if use_rope else None
 
     def forward(self, x: Tensor, mask: Tensor | None = None) -> Tensor:
         # x: (batch_size, seq_len, d_model)
@@ -185,7 +185,7 @@ class GroupedQueryAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model // n_groups)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEncoding(d_model // n_heads, scale_factor=rope_scale_factor) if use_rope else None
+        self.rope = RotaryPositionalEmbedding(d_model // n_heads, scale_factor=rope_scale_factor) if use_rope else None
 
     def forward(
         self,

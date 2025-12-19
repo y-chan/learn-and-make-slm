@@ -11,47 +11,46 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
     return rotated.reshape(*x.shape[:-2], -1)  # [..., dim]
 
 
-class YaRNRotaryPositionalEncoding(nn.Module):
+class RotaryPositionalEncoding(nn.Module):
     def __init__(
         self,
         dim: int,
         max_seq_len: int = 2048,
-        original_max_seq_len: int = 2048,
-        base: float = 10_000,
-        alpha: float = 1.0,
-        beta: float = 32.0,
         scale_factor: float = 1.0,
         enable_dynamic_scaling: bool = False,
     ) -> None:
         """
         YaRN (Yet another RoPE extensioN method) implementation.
-        
+
         Args:
             dim: Dimension of the embedding (must be even)
             max_seq_len: Maximum sequence length for pre-computation
-            original_max_seq_len: Original pre-training sequence length
-            base: Base value for frequency computation (default: 10000)
-            alpha: Lower bound for NTK-by-parts ramp function (default: 1.0)
-            beta: Upper bound for NTK-by-parts ramp function (default: 32.0)
-            scale_factor: Context extension scale factor s = L'/L (default: 1.0 for no extension)
+            scale_factor: Context extension scale factor s = L'/L (default: 1.0 for no extension), if scale_factor > 1.0, use YaRN.
             enable_dynamic_scaling: Whether to use dynamic scaling at inference time
         """
         super().__init__()
         if dim % 2 != 0:
-            raise ValueError("YaRNRotaryPositionalEncoding expects an even dimension.")
+            raise ValueError("RotaryPositionalEncoding expects an even dimension.")
 
         self.dim = dim
         self.max_seq_len = max_seq_len
-        self.original_max_seq_len = original_max_seq_len
-        self.base = base
-        self.alpha = alpha
-        self.beta = beta
+        self.original_max_seq_len = max_seq_len
         self.scale_factor = scale_factor
         self.enable_dynamic_scaling = enable_dynamic_scaling
+        self._cached_scale_factor: float = scale_factor
 
-        # Compute attention temperature scaling
-        # sqrt(1/t) = 0.1 * ln(s) + 1
-        self.attention_scale = 0.1 * math.log(max(scale_factor, 1.0)) + 1.0
+        if self.scale_factor > 1.0:
+            # use YaRN
+            # Compute attention temperature scaling
+            # sqrt(1/t) = 0.1 * ln(s) + 1
+            self.attention_scale = 0.1 * math.log(max(scale_factor, 1.0)) + 1.0
+        else:  
+            # use normal RoPE
+            self.attention_scale = 1.0
+
+        self.base = 10_000
+        self.alpha = 1.0
+        self.beta = 32.0
 
         # Buffers move with the module and are optionally re-computed on demand.
         self.cos: Tensor  # (max_seq_len, dim)
@@ -66,16 +65,26 @@ class YaRNRotaryPositionalEncoding(nn.Module):
             scale_factor=scale_factor,
         )
 
-    def _compute_ramp_function(self, r: Float[Tensor, "dim/2"]) -> Float[Tensor, "dim/2"]:
+    def _compute_ramp_function(self, r: Float[Tensor, "D"]) -> Float[Tensor, "D"]:  # noqa: F821
         """
-        Compute the ramp function γ(r) for NTK-by-parts interpolation.
+        Compute the ramp function for NTK-by-parts interpolation.
         
-        γ(r) = 0 if r < α
-             = 1 if r > β
-             = (r - α)/(β - α) otherwise
+        Returns gamma where:
+            gamma = 0 if r < low (high frequency dimensions, no interpolation)
+            gamma = 1 if r > high (low frequency dimensions, full interpolation)
+            gamma = (r - low)/(high - low) otherwise (smooth transition)
+        
+        where r is the dimension index (0, 1, 2, ...) and low/high are
+        thresholds computed from alpha, beta, and original_max_seq_len.
         """
-        gamma = torch.clamp((r - self.alpha) / (self.beta - self.alpha), min=0.0, max=1.0)
-        return gamma
+        dim_half = self.dim / 2
+        # NTK-by-parts: compute dimension thresholds
+        # See GPT-OSS implementation: https://github.com/openai/gpt-oss
+        low = dim_half * math.log(self.original_max_seq_len / (self.beta * 2 * math.pi)) / math.log(self.base)
+        high = dim_half * math.log(self.original_max_seq_len / (self.alpha * 2 * math.pi)) / math.log(self.base)
+        assert 0 < low < high < dim_half - 1
+
+        return torch.clamp((r - low) / (high - low), min=0.0, max=1.0)
 
     def _compute_rotates(
         self,
@@ -91,38 +100,40 @@ class YaRNRotaryPositionalEncoding(nn.Module):
         """
         # Compute dimension indices (only even dimensions: 0, 2, 4, ...)
         d_indices = torch.arange(0, dim, 2, dtype=dtype, device=device)  # (dim/2,)
-        
-        # Compute wavelengths: λ_d = 2π * base^(2d/dim)
-        wavelengths = 2 * math.pi * (self.base ** (d_indices / dim))  # (dim/2,)
-        
-        # Compute ratio r(d) = L / λ_d
-        r = self.original_max_seq_len / wavelengths  # (dim/2,)
-        
-        # Compute ramp function γ(r)
-        gamma = self._compute_ramp_function(r)  # (dim/2,)
-        
-        # NTK-by-parts interpolation:
-        # θ'_d = (1 - γ(r)) * θ_d/s + γ(r) * θ_d
         base_thetas = 1.0 / (self.base ** (d_indices / dim))  # (dim/2,)
-        interpolated_thetas = (1 - gamma) * (base_thetas / scale_factor) + gamma * base_thetas
-        
+
+        if scale_factor > 1.0:  # use YaRN
+            r = d_indices / 2  # (0, 1, 2, 3, ...)
+
+            # Compute ramp function γ(r)
+            gamma = self._compute_ramp_function(r)  # (dim/2,)
+
+            # NTK-by-parts interpolation:
+            # gamma = 0 (d < low, high freq): use base_thetas (no interpolation, preserve original)
+            # gamma = 1 (d > high, low freq): use base_thetas/s (interpolation)
+            interpolated_thetas = gamma * (base_thetas / scale_factor) + (1 - gamma) * base_thetas
+
+        else:  # use normal RoPE
+            interpolated_thetas = base_thetas
+
         # Expand to full dimension (interleave for cos/sin pairs)
         thetas = (
             interpolated_thetas.unsqueeze(1)  # (dim/2, 1)
             .expand(-1, 2)  # (dim/2, 2)
             .reshape(-1)  # (dim,)
         )
-        
+
         # Compute position indices
         pos = torch.arange(0, max_seq_len, dtype=dtype, device=device)  # (max_seq_len,)
-        
+
         # Compute rotations
         rotate = torch.outer(pos, thetas)  # (max_seq_len, dim)
         
         # Apply attention scaling
-        rotate = rotate * self.attention_scale
+        cos = torch.cos(rotate) * self.attention_scale
+        sin = torch.sin(rotate) * self.attention_scale
         
-        return torch.cos(rotate), torch.sin(rotate)
+        return cos, sin
 
     def _update_cache(
         self,
@@ -136,6 +147,7 @@ class YaRNRotaryPositionalEncoding(nn.Module):
         needs_rebuild = (
             self.cos.numel() == 0  # initial build
             or seq_len > self.max_seq_len
+            or scale_factor != self._cached_scale_factor  # dynamic scaling
             or self.cos.device != device
             or self.cos.dtype != dtype
         )
@@ -153,6 +165,7 @@ class YaRNRotaryPositionalEncoding(nn.Module):
         self.cos = _cos
         self.sin = _sin
         self.max_seq_len = target_len
+        self._cached_scale_factor = scale_factor
 
     def forward(
         self, x: Float[Tensor, "... seq_len {self.dim}"]
@@ -164,18 +177,17 @@ class YaRNRotaryPositionalEncoding(nn.Module):
         
         # Dynamic scaling: adjust scale_factor based on current sequence length
         if self.enable_dynamic_scaling:
+            assert self.scale_factor > 1.0, "Dynamic scaling is only supported for YaRN, not for normal RoPE"
             dynamic_scale = max(1.0, seq_len / self.original_max_seq_len)
             # Recompute attention scale for dynamic scaling
             self.attention_scale = 0.1 * math.log(dynamic_scale) + 1.0
-            
-            # Update cache with dynamic scale if needed
-            if dynamic_scale != self.scale_factor:
-                self._update_cache(
-                    seq_len=seq_len,
-                    device=x.device,
-                    dtype=x.dtype,
-                    scale_factor=dynamic_scale,
-                )
+
+            self._update_cache(
+                seq_len=seq_len,
+                device=x.device,
+                dtype=x.dtype,
+                scale_factor=dynamic_scale,
+            )
         else:
             self._update_cache(
                 seq_len=seq_len,

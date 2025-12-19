@@ -1,7 +1,7 @@
 dataset: "SimpleStories-Both"
 tokenizer: "cl100k_base"
 path:
-  log_dir: "logs/simple_stories_gpt_oss"
+  log_dir: "logs/simple_stories_gpt_oss_yarn"
 model:
   d_model: 512
   n_heads: 8

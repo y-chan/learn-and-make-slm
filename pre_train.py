@@ -253,6 +253,7 @@ def main():
                 tokenizer.eot_token,
             )
         case "gpt-oss":
+            assert config.model.n_groups is not None, "n_groups must be provided for GPT-OSS"
             model = GPTOSSDecoder(
                 tokenizer.n_vocab,
                 config.model.n_layers,

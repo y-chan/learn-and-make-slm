@@ -55,6 +55,7 @@ class ModelConfig(YamlConfig):
     n_groups: int
     n_layers: int
     rope_scale_factor: float = 1.0
+    use_sigmoid_gate: bool = False
 
 
 @dataclasses.dataclass

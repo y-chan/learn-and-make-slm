@@ -21,6 +21,7 @@ class FeedForwardSwish(torch.nn.Module):
     GPT-2の再現であればGELUを使うべきだが、
     めんどくさいのでだいたい同じのSwishを使う
     """
+
     def __init__(
         self,
         d_model: int,

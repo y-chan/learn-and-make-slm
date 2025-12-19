@@ -87,15 +87,13 @@ class GPT2Decoder(DecoderBase):
     概ねGPT-2なTransformerのDecoder
     Decoder Layerの実装に一部差異がある
     """
+
     def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
         super().__init__(n_vocab, d_model, end_token_id)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
-        self.decoder_layers = nn.ModuleList([
-            GPT2DecoderLayer(d_model, n_heads)
-            for _ in range(n_layers)
-        ])
+        self.decoder_layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
         self.layer_norm = LayerNorm([d_model])
         self.linear_out = Linear(d_model, n_vocab)
 
@@ -111,31 +109,8 @@ class GPT2Decoder(DecoderBase):
             x = layer(x, seq_lens)
 
         x = self.layer_norm(x)
-        y: Float[Tensor, f"B S V"] = self.linear_out(x)
+        y: Float[Tensor, "B S V"] = self.linear_out(x)
         return y
-
-    def loss(
-        self,
-        pred_y: Float[Tensor, "B S V={self.n_vocab}"],
-        target_y_index: Int[Tensor, "B S"],
-        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
-    ) -> Float[Tensor, "1"]:
-        pred_y: Float[Tensor, "B V S"] = pred_y.transpose(-1, -2)
-
-        # cross_entropyはreduction='none'で各位置のlossを計算し、
-        # 後でmaskを適用して平均を取る
-        loss: Float[Tensor, "B S"] = nn.functional.cross_entropy(pred_y, target_y_index, reduction="none")
-
-        if seq_lens is not None:
-            non_pad_mask: Bool[Tensor, "B S"] = make_non_pad_mask(seq_lens, maxlen=loss.size(-1)).to(loss.device)
-            # パディング位置のlossを0にする
-            loss = loss * non_pad_mask
-            # 有効な位置の平均を取る（division by zeroを防ぐため最小値1を保証）
-            loss = loss.sum() / torch.clamp(non_pad_mask.sum(), min=1.0)
-        else:
-            loss = loss.mean()
-
-        return loss
 
 
 class GPTOSSDecoder(DecoderBase):

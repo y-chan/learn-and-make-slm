@@ -10,7 +10,16 @@ from utils.mask import make_non_pad_mask
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
+    def __init__(
+        self,
+        n_vocab: int,
+        n_layers: int,
+        d_model: int,
+        n_heads: int,
+        n_groups: int,
+        end_token_id: int,
+        rope_scale_factor: float = 1.0,
+    ):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
@@ -18,7 +27,10 @@ class Decoder(nn.Module):
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
-            [DecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups) for _ in range(n_layers)]
+            [
+                DecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor)
+                for _ in range(n_layers)
+            ]
         )
         self.linear_out = Linear(d_model, n_vocab)
 

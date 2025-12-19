@@ -250,6 +250,7 @@ def main():
         config.model.n_heads,
         config.model.n_groups,
         tokenizer.eot_token,
+        config.model.rope_scale_factor,
     )
     # モデルをGPU/CPUに転送
     model.to(device)

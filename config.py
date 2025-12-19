@@ -54,6 +54,7 @@ class ModelConfig(YamlConfig):
     n_heads: int
     n_groups: int
     n_layers: int
+    rope_scale_factor: float = 1.0
 
 
 @dataclasses.dataclass

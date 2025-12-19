@@ -88,7 +88,7 @@ class GPT2Decoder(DecoderBase):
     Decoder Layerの実装に一部差異がある
     """
 
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
         super().__init__(n_vocab, d_model, end_token_id)
 
         self.embedding = Embedding(n_vocab, d_model)
@@ -114,6 +114,11 @@ class GPT2Decoder(DecoderBase):
 
 
 class GPTOSSDecoder(DecoderBase):
+    """
+    概ねGPT-OSSなTransformerのDecoder
+    Decoder Layerの実装に一部差異がある
+    """
+
     def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
         super().__init__(n_vocab, d_model, end_token_id)
 

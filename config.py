@@ -50,10 +50,11 @@ class PathConfig(YamlConfig):
 
 @dataclasses.dataclass
 class ModelConfig(YamlConfig):
+    model_type: str
     d_model: int
     n_heads: int
-    n_groups: int
     n_layers: int
+    n_groups: int | None = None
 
 
 @dataclasses.dataclass

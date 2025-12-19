@@ -1,12 +1,11 @@
 dataset: "SimpleStories-Both"
 tokenizer: "cl100k_base"
 path:
-  log_dir: "logs/simple_stories_gpt_oss"
+  log_dir: "logs/simple_stories_gpt_2"
 model:
-  model_type: "gpt-oss"
+  model_type: "gpt-2"
   d_model: 512
   n_heads: 8
-  n_groups: 2
   n_layers: 16
 
 train:

@@ -37,6 +37,11 @@ class GPT2DecoderLayer(nn.Module):
 
 
 class GPTOSSDecoderLayer(nn.Module):
+    """
+    概ねGPT-OSSのDecoder Layerを再現している
+    異なるのは、RMSNormではなくLayerNormを使っている点
+    """
+
     def __init__(self, d_model: int, n_heads: int, n_groups: int):
         super().__init__()
         self.d_model = d_model

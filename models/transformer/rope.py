@@ -20,7 +20,7 @@ class RotaryPositionalEncoding(nn.Module):
         enable_dynamic_scaling: bool = False,
     ) -> None:
         """
-        YaRN (Yet another RoPE extensioN method) implementation.
+        Rotary Positional Encoding (RoPE) and YaRN (Yet another RoPE extensioN method) implementation.
 
         Args:
             dim: Dimension of the embedding (must be even)

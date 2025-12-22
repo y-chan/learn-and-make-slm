@@ -2,16 +2,18 @@ import torch
 import tiktoken
 
 from torch import nn, Tensor
-from models.transformer.decoder_layer import DecoderLayer
+from models.basic.layer_norm import LayerNorm
+from models.transformer.decoder_layer import GPT2DecoderLayer, GPTOSSDecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import Softmax
 from jaxtyping import Float, Int, Bool
 from models.basic.embedding import Embedding
+from models.transformer.positional_encoding import PositionalEncoding
 from utils.mask import make_non_pad_mask
 
 
-class Decoder(nn.Module):
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
+class DecoderBase(nn.Module):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
@@ -30,13 +32,7 @@ class Decoder(nn.Module):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
-        x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
-
-        for layer in self.layers:
-            x = layer(x, seq_lens)
-
-        output = self.linear_out(x)
-        return output
+        raise NotImplementedError()
 
     @torch.no_grad()
     def infer(
@@ -52,7 +48,7 @@ class Decoder(nn.Module):
         count = 0
         if tokenizer is not None:
             starts = tokenizer.decode(starts[0].tolist())
-            print("".join(starts), end="")
+            print("".join(starts), end="", flush=True)
 
         if max_token_count is None:
             loop_condition = lambda count: True
@@ -85,7 +81,7 @@ class Decoder(nn.Module):
                 break
             if tokenizer is not None:
                 next_token = tokenizer.decode([next_token.item()])
-                print(next_token[0], end="")
+                print(next_token[0], end="", flush=True)
         return x
 
     def loss(
@@ -110,3 +106,63 @@ class Decoder(nn.Module):
             loss = loss.mean()
 
         return loss
+
+
+class GPT2Decoder(DecoderBase):
+    """
+    概ねGPT-2なTransformerのDecoder
+    Decoder Layerの実装に一部差異がある
+    """
+
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
+        super().__init__(n_vocab, d_model, end_token_id)
+
+        self.embedding = Embedding(n_vocab, d_model)
+        self.positional_encoding = PositionalEncoding(d_model)
+        self.decoder_layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
+        self.layer_norm = LayerNorm([d_model])
+        self.linear_out = Linear(d_model, n_vocab)
+
+    def forward(
+        self,
+        x: Int[Tensor, "B S"],
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
+    ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
+        x = self.positional_encoding(x)
+
+        for layer in self.decoder_layers:
+            x = layer(x, seq_lens)
+
+        x = self.layer_norm(x)
+        y: Float[Tensor, "B S V"] = self.linear_out(x)
+        return y
+
+
+class GPTOSSDecoder(DecoderBase):
+    """
+    概ねGPT-OSSなTransformerのDecoder
+    Decoder Layerの実装に一部差異がある
+    """
+
+    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
+        super().__init__(n_vocab, d_model, end_token_id)
+
+        self.embedding = Embedding(n_vocab, d_model)
+        self.layers = nn.ModuleList(
+            [GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups) for _ in range(n_layers)]
+        )
+        self.linear_out = Linear(d_model, n_vocab)
+
+    def forward(
+        self,
+        x: Int[Tensor, "B S"],
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
+    ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
+
+        for layer in self.layers:
+            x = layer(x, seq_lens)
+
+        output = self.linear_out(x)
+        return output

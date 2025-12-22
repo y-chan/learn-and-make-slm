@@ -60,7 +60,7 @@ class DecoderBase(nn.Module):
             # TODO: temperatureなどを考慮したサンプリングを実装する
             # TODO: KVキャッシュを考慮した形にする
             if temperature == 0.0:
-                # argmax: Greedy Encodingによる最も確率の高いトークンを選択
+                # argmax: Greedy Decodingによる最も確率の高いトークンを選択
                 next_token = output.argmax(dim=-1)[:, -1:]
             else:
                 output_prob = self.softmax(output / temperature)

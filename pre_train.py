@@ -12,13 +12,13 @@ import yaml
 
 from config import SLMConfig
 from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
-from models.transformer.decoder import Decoder
+from models.transformer.decoder import DecoderBase, GPT2Decoder, GPTOSSDecoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
 
 
 def validate(
-    model: Decoder,
+    model: DecoderBase,
     test_loader: torch.utils.data.DataLoader,
     test_writer: SummaryWriter,
     tokenizer: tiktoken.Encoding,
@@ -66,7 +66,7 @@ def validate(
 
 def train(
     config: SLMConfig,
-    model: Decoder,
+    model: DecoderBase,
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     test_loader: torch.utils.data.DataLoader,
@@ -243,15 +243,29 @@ def main():
     tokenizer = tiktoken.get_encoding(config.tokenizer)
 
     # モデルの初期化
-    model = Decoder(
-        tokenizer.n_vocab,
-        config.model.n_layers,
-        config.model.d_model,
-        config.model.n_heads,
-        config.model.n_groups,
-        tokenizer.eot_token,
-        config.model.rope_scale_factor,
-    )
+    match config.model.model_type:
+        case "gpt-2":
+            model = GPT2Decoder(
+                tokenizer.n_vocab,
+                config.model.n_layers,
+                config.model.d_model,
+                config.model.n_heads,
+                tokenizer.eot_token,
+            )
+        case "gpt-oss":
+            assert config.model.n_groups is not None, "n_groups must be provided for GPT-OSS"
+            model = GPTOSSDecoder(
+                tokenizer.n_vocab,
+                config.model.n_layers,
+                config.model.d_model,
+                config.model.n_heads,
+                config.model.n_groups,
+                tokenizer.eot_token,
+                config.model.rope_scale_factor,
+            )
+        case _:
+            raise ValueError(f"Model type {config.model.model_type} not supported")
+
     # モデルをGPU/CPUに転送
     model.to(device)
     # PyTorch 2.0のコンパイル機能で高速化できる場合もある、今回はあまり効果なし

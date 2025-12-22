@@ -19,12 +19,6 @@ class DecoderBase(nn.Module):
         self.d_model = d_model
         self.end_token_id = end_token_id
 
-        self.embedding = Embedding(n_vocab, d_model)
-        self.layers = nn.ModuleList(
-            [DecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups) for _ in range(n_layers)]
-        )
-        self.linear_out = Linear(d_model, n_vocab)
-
         self.softmax = Softmax()
 
     def forward(

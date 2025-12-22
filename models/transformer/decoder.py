@@ -44,10 +44,10 @@ class DecoderBase(nn.Module):
             starts = tokenizer.decode(starts[0].tolist())
             print("".join(starts), end="", flush=True)
 
-        if max_token_count is None:
-            loop_condition = lambda count: True
-        else:
-            loop_condition = lambda count: count < max_token_count
+        def loop_condition(count: int) -> bool:
+            if max_token_count is not None:
+                return count < max_token_count
+            return True
 
         while loop_condition(count=count):
             output = self(x.detach().clone())

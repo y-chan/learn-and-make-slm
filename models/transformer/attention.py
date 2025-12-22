@@ -158,7 +158,11 @@ class MultiHeadAttention(nn.Module):
 
         self.use_sigmoid_gate = use_sigmoid_gate
 
-    def forward(self, x: Tensor, mask: Tensor | None = None) -> Tensor:
+    def forward(
+        self,
+        x: Float[Tensor, "B S D={self.d_model}"],
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
+    ) -> Float[Tensor, "B S D"]:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
         Q = (
@@ -175,7 +179,7 @@ class MultiHeadAttention(nn.Module):
             Q = self.rope(Q)
             K = self.rope(K)
 
-        attention = self.attention(Q, K, V, mask)
+        attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         if self.use_sigmoid_gate:

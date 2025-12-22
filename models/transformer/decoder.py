@@ -1,8 +1,10 @@
+from typing import Final
 import torch
 import tiktoken
 
 from torch import nn, Tensor
 from models.basic.layer_norm import LayerNorm
+from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention
 from models.transformer.decoder_layer import GPT2DecoderLayer, GPTOSSDecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import Softmax
@@ -12,14 +14,28 @@ from models.transformer.positional_encoding import PositionalEncoding
 from utils.mask import make_non_pad_mask
 
 
+CACHEABLE_MODULES: Final = (MultiHeadAttention, GroupedQueryAttention)
+
+
 class DecoderBase(nn.Module):
-    def __init__(self, n_vocab: int, d_model: int, end_token_id: int):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_cache: bool = False):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
         self.end_token_id = end_token_id
+        self.enable_cache = enable_cache
 
         self.softmax = Softmax()
+
+    def _enable_caches(self) -> None:
+        for module in self.modules():
+            if isinstance(module, CACHEABLE_MODULES):
+                module._internal_enable_cache()
+
+    def _disable_caches(self) -> None:
+        for module in self.modules():
+            if isinstance(module, CACHEABLE_MODULES):
+                module._internal_disable_cache()
 
     def forward(
         self,

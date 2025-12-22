@@ -59,11 +59,17 @@ class RotaryPositionalEncoding(nn.Module):
         self.sin = _sin
         self.max_seq_len = target_len
 
-    def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
+    def forward(
+        self,
+        x: Float[Tensor, "... seq_len {self.dim}"],
+        positional_offset: int = 0,
+        # When we using KV cache, we get one token at a time, but the token can be at any position in the sequence.
+    ) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         seq_len = x.size(-2)
-        self._update_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+        total_seq_len = seq_len + positional_offset
+        self._update_cache(seq_len=total_seq_len, device=x.device, dtype=x.dtype)
 
-        cos = self.cos[:seq_len, :]  # (seq_len, dim)
-        sin = self.sin[:seq_len, :]  # (seq_len, dim)
+        cos = self.cos[positional_offset:total_seq_len, :]  # (seq_len, dim)
+        sin = self.sin[positional_offset:total_seq_len, :]  # (seq_len, dim)
 
         return (x * cos) + (rotate_half(x) * sin)

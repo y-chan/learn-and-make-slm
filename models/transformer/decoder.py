@@ -18,7 +18,7 @@ CACHEABLE_MODULES: Final = (MultiHeadAttention, GroupedQueryAttention)
 
 
 class DecoderBase(nn.Module):
-    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_cache: bool = False):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_cache: bool):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
@@ -132,8 +132,10 @@ class GPT2Decoder(DecoderBase):
     Decoder Layerの実装に一部差異がある
     """
 
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
-        super().__init__(n_vocab, d_model, end_token_id)
+    def __init__(
+        self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int, *, enable_cache: bool = False
+    ):
+        super().__init__(n_vocab, d_model, end_token_id, enable_cache=enable_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
@@ -163,8 +165,18 @@ class GPTOSSDecoder(DecoderBase):
     Decoder Layerの実装に一部差異がある
     """
 
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
-        super().__init__(n_vocab, d_model, end_token_id)
+    def __init__(
+        self,
+        n_vocab: int,
+        n_layers: int,
+        d_model: int,
+        n_heads: int,
+        n_groups: int,
+        end_token_id: int,
+        *,
+        enable_cache: bool = False,
+    ):
+        super().__init__(n_vocab, d_model, end_token_id, enable_cache=enable_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(

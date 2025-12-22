@@ -148,10 +148,10 @@ class MultiHeadAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
-    def _internal_enable_cache(self) -> None:
+    def _internal_activate_cache(self) -> None:
         pass
 
-    def _internal_disable_cache(self) -> None:
+    def _internal_invalidate_cache(self) -> None:
         pass
 
     def forward(
@@ -197,10 +197,10 @@ class GroupedQueryAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
-    def _internal_enable_cache(self) -> None:
+    def _internal_activate_cache(self) -> None:
         pass
 
-    def _internal_disable_cache(self) -> None:
+    def _internal_invalidate_cache(self) -> None:
         pass
 
     def forward(

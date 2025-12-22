@@ -27,15 +27,15 @@ class DecoderBase(nn.Module):
 
         self.softmax = Softmax()
 
-    def _enable_caches(self) -> None:
+    def _activate_caches(self) -> None:
         for module in self.modules():
             if isinstance(module, CACHEABLE_MODULES):
-                module._internal_enable_cache()
+                module._internal_activate_cache()
 
-    def _disable_caches(self) -> None:
+    def _invalidate_caches(self) -> None:
         for module in self.modules():
             if isinstance(module, CACHEABLE_MODULES):
-                module._internal_disable_cache()
+                module._internal_invalidate_cache()
 
     def forward(
         self,
@@ -55,7 +55,7 @@ class DecoderBase(nn.Module):
     ) -> Int[Tensor, "1 S"]:
         try:
             if self.enable_cache:
-                self._enable_caches()
+                self._activate_caches()
 
             assert starts.size(0) == 1, "starts must be a 1D tensor"
             x: Tensor = starts
@@ -100,7 +100,7 @@ class DecoderBase(nn.Module):
             return x
         finally:
             if self.enable_cache:
-                self._disable_caches()
+                self._invalidate_caches()
 
     def loss(
         self,

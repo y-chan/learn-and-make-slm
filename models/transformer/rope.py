@@ -43,7 +43,7 @@ class RotaryPositionalEmbedding(nn.Module):
             # use YaRN
             # Compute attention temperature scaling
             # sqrt(1/t) = 0.1 * ln(s) + 1
-            self.attention_scale = 0.1 * math.log(max(scale_factor, 1.0)) + 1.0
+            self.attention_scale = 0.1 * math.log(scale_factor) + 1.0
         else:
             # use normal RoPE
             self.attention_scale = 1.0

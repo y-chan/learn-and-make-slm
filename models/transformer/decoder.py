@@ -41,8 +41,8 @@ class DecoderBase(nn.Module):
         x = starts
         count = 0
         if tokenizer is not None:
-            starts = tokenizer.decode(starts[0].tolist())
-            print("".join(starts), end="", flush=True)
+            decoded = tokenizer.decode(starts[0].tolist())
+            print("".join(decoded), end="", flush=True)
 
         def loop_condition(count: int) -> bool:
             if max_token_count is not None:

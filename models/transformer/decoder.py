@@ -154,7 +154,10 @@ class GPTOSSDecoder(DecoderBase):
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
-            [GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor) for _ in range(n_layers)]
+            [
+                GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor)
+                for _ in range(n_layers)
+            ]
         )
         self.linear_out = Linear(d_model, n_vocab)
 

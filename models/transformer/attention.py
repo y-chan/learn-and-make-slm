@@ -1,3 +1,4 @@
+from typing import Final
 import warnings
 from torch import nn, Tensor
 import torch
@@ -5,6 +6,7 @@ from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
+from utils.kv_cache import KVCache
 from utils.mask import make_pad_mask
 from models.transformer.rope import RotaryPositionalEncoding
 
@@ -17,6 +19,8 @@ except Exception:
     xops = None  # type: ignore
     fmha = None  # type: ignore
     _HAS_XFORMERS = False
+
+_INTERNAL_INITIAL_CACHE_INDEX: Final = -1
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -148,11 +152,16 @@ class MultiHeadAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
+        self._kv_cache = KVCache()
+        self._active_cache: int | None = None
+
     def _internal_activate_cache(self) -> None:
-        pass
+        self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
 
     def _internal_invalidate_cache(self) -> None:
-        pass
+        if self._active_cache is not None:
+            self._kv_cache.reset(self._active_cache)
+            self._active_cache = None
 
     def forward(
         self,
@@ -161,6 +170,13 @@ class MultiHeadAttention(nn.Module):
     ) -> Float[Tensor, "B S D"]:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
+
+        # When using cache, We can only process one token at a time.
+        if self._active_cache is not None:
+            assert seq_len == 1, (
+                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
+            )
+
         Q = (
             self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )  # (batch_size, n_heads, seq_len, d_k)
@@ -179,6 +195,14 @@ class MultiHeadAttention(nn.Module):
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
+
+        if self._active_cache is not None:
+            # When using cache, We can only process one token at a time.
+            assert output.size(1) == 1, (
+                f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
+                f"with cache index {self._active_cache}."
+            )
+
         return output
 
 
@@ -197,11 +221,16 @@ class GroupedQueryAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
+        self._kv_cache = KVCache()
+        self._active_cache: int | None = None
+
     def _internal_activate_cache(self) -> None:
-        pass
+        self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
 
     def _internal_invalidate_cache(self) -> None:
-        pass
+        if self._active_cache is not None:
+            self._kv_cache.reset(self._active_cache)
+            self._active_cache = None
 
     def forward(
         self,
@@ -209,6 +238,12 @@ class GroupedQueryAttention(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
+        # When using cache, We can only process one token at a time.
+        if self._active_cache is not None:
+            assert seq_len == 1, (
+                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
+            )
+
         Q: Float[Tensor, "B H={self.n_heads} S D"] = (
             self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )
@@ -239,4 +274,12 @@ class GroupedQueryAttention(nn.Module):
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
+
+        # When using cache, We can only process one token at a time.
+        if self._active_cache is not None:
+            assert output.size(1) == 1, (
+                f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
+                f"with cache index {self._active_cache}."
+            )
+
         return output

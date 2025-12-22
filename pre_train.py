@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 import dataclasses
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import datasets
 import tiktoken
@@ -12,13 +13,16 @@ import yaml
 
 from config import SLMConfig
 from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
-from models.transformer.decoder import DecoderBase, GPT2Decoder, GPTOSSDecoder
+from models.transformer.decoder import GPT2Decoder, GPTOSSDecoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
 
+if TYPE_CHECKING:
+    from models.transformer.decoder import DecoderBase
+
 
 def validate(
-    model: DecoderBase,
+    model: "DecoderBase",
     test_loader: torch.utils.data.DataLoader,
     test_writer: SummaryWriter,
     tokenizer: tiktoken.Encoding,
@@ -66,7 +70,7 @@ def validate(
 
 def train(
     config: SLMConfig,
-    model: DecoderBase,
+    model: "DecoderBase",
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     test_loader: torch.utils.data.DataLoader,

@@ -6,7 +6,7 @@ from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
-from utils.kv_cache import KVCache
+from utils.kv_cache import CacheEntry, KVCache
 from utils.mask import make_pad_mask
 from models.transformer.rope import RotaryPositionalEncoding
 
@@ -154,6 +154,7 @@ class MultiHeadAttention(nn.Module):
 
         self._kv_cache = KVCache()
         self._active_cache: int | None = None
+        self._current_seq_len: int = 0
 
     def _internal_activate_cache(self) -> None:
         self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
@@ -188,10 +189,33 @@ class MultiHeadAttention(nn.Module):
         )  # (batch_size, n_heads, seq_len, d_k)
 
         if self.rope is not None:
-            Q = self.rope(Q)
-            K = self.rope(K)
+            positional_offset: int = 0
+            if self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
+                # when cached, we need to indicate current K/Q position with positional_offset
+                positional_offset = self._current_seq_len
 
-        attention = self.attention(Q, K, V, seq_lens)
+            Q = self.rope(Q, positional_offset)
+            K = self.rope(K, positional_offset)
+
+        attention: Tensor
+        if self._active_cache is not None:
+            # cached
+            if self._active_cache == _INTERNAL_INITIAL_CACHE_INDEX:
+                self._active_cache = self._kv_cache.append(
+                    cache_class=CacheEntry,
+                    key=K,
+                    value=V,
+                )
+                self._current_seq_len = 1
+            else:
+                K, V = self._kv_cache.update(self._active_cache, K, V)
+                self._current_seq_len += 1
+
+            attention = self.attention(Q, K, V, seq_lens=None)
+        else:
+            # non-cached
+            attention = self.attention(Q, K, V, seq_lens)
+
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
@@ -223,6 +247,7 @@ class GroupedQueryAttention(nn.Module):
 
         self._kv_cache = KVCache()
         self._active_cache: int | None = None
+        self._current_seq_len: int = 0
 
     def _internal_activate_cache(self) -> None:
         self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
@@ -267,10 +292,33 @@ class GroupedQueryAttention(nn.Module):
         V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
         if self.rope is not None:
-            Q = self.rope(Q)
-            K = self.rope(K)
+            positional_offset: int = 0
+            if self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
+                # when cached, we need to indicate current K/Q position with positional_offset
+                positional_offset = self._current_seq_len
 
-        attention = self.attention(Q, K, V, seq_lens)
+            Q = self.rope(Q, positional_offset)
+            K = self.rope(K, positional_offset)
+
+        attention: Tensor
+        if self._active_cache is not None:
+            # cached
+            if self._active_cache == _INTERNAL_INITIAL_CACHE_INDEX:
+                self._active_cache = self._kv_cache.append(
+                    cache_class=CacheEntry,
+                    key=K,
+                    value=V,
+                )
+                self._current_seq_len = 1
+            else:
+                K, V = self._kv_cache.update(self._active_cache, K, V)
+                self._current_seq_len += 1
+
+            attention = self.attention(Q, K, V, seq_lens=None)
+        else:
+            # non-cached
+            attention = self.attention(Q, K, V, seq_lens)
+
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)

@@ -140,12 +140,24 @@ class GPTOSSDecoder(DecoderBase):
     Decoder Layerの実装に一部差異がある
     """
 
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, n_groups: int, end_token_id: int):
+    def __init__(
+        self,
+        n_vocab: int,
+        n_layers: int,
+        d_model: int,
+        n_heads: int,
+        n_groups: int,
+        end_token_id: int,
+        rope_scale_factor: float = 1.0,
+    ):
         super().__init__(n_vocab, d_model, end_token_id)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
-            [GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups) for _ in range(n_layers)]
+            [
+                GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor)
+                for _ in range(n_layers)
+            ]
         )
         self.linear_out = Linear(d_model, n_vocab)
 

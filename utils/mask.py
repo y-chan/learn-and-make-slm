@@ -16,12 +16,13 @@
 
 
 import torch
-from torch import LongTensor, Tensor
+from torch import Tensor
+from jaxtyping import Int, Float
 
 
 def make_pad_mask(
-    lengths: LongTensor | list[int],
-    xs: Tensor | None = None,
+    lengths: Int[Tensor, "B"] | list[int],
+    xs: Float[Tensor, "..."] | None = None,
     length_dim: int = -1,
     maxlen: int | None = None,
 ):
@@ -133,8 +134,8 @@ def make_pad_mask(
 
 
 def make_non_pad_mask(
-    lengths: LongTensor | list[int],
-    xs: Tensor | None = None,
+    lengths: Int[Tensor, "B"] | list[int],
+    xs: Float[Tensor, "..."] | None = None,
     length_dim: int = -1,
     maxlen: int | None = None,
 ):

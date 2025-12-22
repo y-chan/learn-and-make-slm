@@ -1,0 +1,24 @@
+dataset: "SimpleStories-Both"
+tokenizer: "cl100k_base"
+path:
+  log_dir: "logs/simple_stories_gpt_oss_yarn_sigmoid"
+model:
+  d_model: 512
+  n_heads: 8
+  n_groups: 2
+  n_layers: 16
+  rope_scale_factor: 16.0
+  use_sigmoid_gate: true
+
+train:
+  manual_seed: 1234
+  max_length: 1024
+  epochs: 1
+  batch_size: 4
+  learning_rate: 0.0005
+  betas: [0.9, 0.999]
+  weight_decay: 0.1
+  lr_decay: 0.995
+  save_epochs: 1
+  logging_steps: 1
+  gradient_accumulation_steps: 16

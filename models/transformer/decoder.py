@@ -149,13 +149,20 @@ class GPTOSSDecoder(DecoderBase):
         n_groups: int,
         end_token_id: int,
         rope_scale_factor: float = 1.0,
+        use_sigmoid_gate: bool = False,
     ):
         super().__init__(n_vocab, d_model, end_token_id)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
             [
-                GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor)
+                GPTOSSDecoderLayer(
+                    d_model=d_model,
+                    n_heads=n_heads,
+                    n_groups=n_groups,
+                    rope_scale_factor=rope_scale_factor,
+                    use_sigmoid_gate=use_sigmoid_gate,
+                )
                 for _ in range(n_layers)
             ]
         )

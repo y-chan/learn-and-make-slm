@@ -59,11 +59,34 @@ class RotaryPositionalEncoding(nn.Module):
         self.sin = _sin
         self.max_seq_len = target_len
 
-    def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
-        seq_len = x.size(-2)
-        self._update_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+    def apply_rotary_pos_emb(
+        self,
+        x: Float[Tensor, "... seq_len {self.dim}"],
+        position_offset: int = 0,  # noqa: F821
+    ) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
+        """
+        Apply rotary positional encoding with optional position offset.
 
-        cos = self.cos[:seq_len, :]  # (seq_len, dim)
-        sin = self.sin[:seq_len, :]  # (seq_len, dim)
+        Parameters
+        ----------
+        x : Float[Tensor, "... seq_len {self.dim}"]
+            Input tensor
+        position_offset : int, optional
+            Absolute position offset for cached inference, by default 0
+
+        Returns
+        -------
+        Float[Tensor, "... seq_len {self.dim}"]
+            Tensor with RoPE applied
+        """
+        seq_len = x.size(-2)
+        total_len = position_offset + seq_len
+        self._update_cache(seq_len=total_len, device=x.device, dtype=x.dtype)
+
+        cos = self.cos[position_offset:total_len, :]  # (seq_len, dim)
+        sin = self.sin[position_offset:total_len, :]  # (seq_len, dim)
 
         return (x * cos) + (rotate_half(x) * sin)
+
+    def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
+        return self.apply_rotary_pos_emb(x, position_offset=0)

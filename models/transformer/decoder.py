@@ -9,17 +9,31 @@ from models.basic.softmax import Softmax
 from jaxtyping import Float, Int, Bool
 from models.basic.embedding import Embedding
 from models.transformer.positional_encoding import PositionalEncoding
+from models.transformer.attention import MultiHeadAttention, GroupedQueryAttention
 from utils.mask import make_non_pad_mask
 
 
 class DecoderBase(nn.Module):
-    def __init__(self, n_vocab: int, d_model: int, end_token_id: int):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_cache: bool = False):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
         self.end_token_id = end_token_id
+        self.enable_cache: bool = enable_cache
 
         self.softmax = Softmax()
+
+    def _enable_all_caches(self) -> None:
+        """Enable KV cache for all attention layers."""
+        for module in self.modules():
+            if isinstance(module, (MultiHeadAttention, GroupedQueryAttention)):
+                module.enable_kv_cache()
+
+    def _disable_all_caches(self) -> None:
+        """Disable KV cache and reset for all attention layers."""
+        for module in self.modules():
+            if isinstance(module, (MultiHeadAttention, GroupedQueryAttention)):
+                module.disable_kv_cache()
 
     def forward(
         self,
@@ -36,47 +50,60 @@ class DecoderBase(nn.Module):
         temperature: float = 0.0,
         top_k: int | None = None,
         tokenizer: tiktoken.Encoding | None = None,
+        use_cache: bool = True,
     ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
-        x = starts
-        count = 0
-        if tokenizer is not None:
-            starts = tokenizer.decode(starts[0].tolist())
-            print("".join(starts), end="", flush=True)
 
-        if max_token_count is None:
-            loop_condition = lambda count: True
-        else:
-            loop_condition = lambda count: count < max_token_count
+        if use_cache:
+            self._enable_all_caches()
 
-        while loop_condition(count=count):
-            output = self(x.detach().clone())
-            # TODO: temperatureなどを考慮したサンプリングを実装する
-            # TODO: KVキャッシュを考慮した形にする
-            if temperature == 0.0:
-                # argmax: Greedy Decodingによる最も確率の高いトークンを選択
-                next_token = output.argmax(dim=-1)[:, -1:]
-            else:
-                output_prob = self.softmax(output / temperature)
-                # 最後の位置の確率分布からサンプリング
-                next_token_probs = output_prob[:, -1, :]  # [B, V]
-                next_token_indices = None
-                if top_k is not None:
-                    next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
-                    next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
-                # torch.multinomialでカテゴリカル分布からサンプリング
-                next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
-                if output_indices is not None:
-                    next_token = torch.gather(next_token_indices, dim=-1, index=next_token)
-
-            x = torch.cat([x, next_token], dim=-1)
-            count += 1
-            if next_token[0, 0] == self.end_token_id:
-                break
+        try:
+            x = starts
+            count = 0
             if tokenizer is not None:
-                next_token = tokenizer.decode([next_token.item()])
-                print(next_token[0], end="", flush=True)
-        return x
+                starts_text = tokenizer.decode(starts[0].tolist())
+                print(starts_text, end="", flush=True)
+
+            def loop_condition(count: int) -> bool:
+                if max_token_count is None:
+                    return True
+                return count < max_token_count
+
+            next_token: Tensor | None = None
+            while loop_condition(count=count):
+                if count > 0 and use_cache and next_token is not None:
+                    output = self(next_token.detach().clone())
+                else:
+                    output = self(x.detach().clone())
+
+                # TODO: temperatureなどを考慮したサンプリングを実装する
+                if temperature == 0.0:
+                    # argmax: Greedy Decodingによる最も確率の高いトークンを選択
+                    next_token = output.argmax(dim=-1)[:, -1:]
+                else:
+                    output_prob = self.softmax(output / temperature)
+                    # 最後の位置の確率分布からサンプリング
+                    next_token_probs = output_prob[:, -1, :]  # [B, V]
+                    next_token_indices = None
+                    if top_k is not None:
+                        next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
+                        next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
+                    # torch.multinomialでカテゴリカル分布からサンプリング
+                    next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
+                    if next_token_indices is not None:
+                        next_token = torch.gather(next_token_indices, dim=-1, index=next_token)
+
+                x = torch.cat([x, next_token], dim=-1)
+                count += 1
+                if next_token[0, 0] == self.end_token_id:
+                    break
+                if tokenizer is not None:
+                    next_token_text = tokenizer.decode([next_token.item()])
+                    print(next_token_text, end="", flush=True)
+            return x
+        finally:
+            if use_cache:
+                self._disable_all_caches()
 
     def loss(
         self,

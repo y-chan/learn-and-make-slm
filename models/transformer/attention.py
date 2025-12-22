@@ -270,12 +270,12 @@ class GroupedQueryAttention(nn.Module):
             self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )
 
-        K_before_expand: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = (
+        K: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = (
             self.linear_k(x)
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
         )
-        V_before_expand: Float[Tensor, "B H_G S D"] = (
+        V: Float[Tensor, "B H_G S D"] = (
             self.linear_v(x)
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
@@ -284,26 +284,26 @@ class GroupedQueryAttention(nn.Module):
         if self.rope is not None:
             if self.cache_enabled:
                 Q = self.rope.apply_rotary_pos_emb(Q, position_offset=self.current_seq_len)
-                K_before_expand = self.rope.apply_rotary_pos_emb(K_before_expand, position_offset=self.current_seq_len)
+                K = self.rope.apply_rotary_pos_emb(K, position_offset=self.current_seq_len)
             else:
                 Q = self.rope(Q)
-                K_before_expand = self.rope(K_before_expand)
+                K = self.rope(K)
 
         if self.cache_enabled:
             from utils.kv_cache import CacheEntry
 
             if self.cache_index is None:
-                self.cache_index = self.cache.append(CacheEntry, K_before_expand, V_before_expand)
+                self.cache_index = self.cache.append(CacheEntry, K, V)
                 self.current_seq_len = 1
             else:
-                K_before_expand, V_before_expand = self.cache.update(self.cache_index, K_before_expand, V_before_expand)
+                K, V = self.cache.update(self.cache_index, K, V)
                 self.current_seq_len += 1
 
-        K: Float[Tensor, "B H_G 1 S D"] = K_before_expand.unsqueeze(2)
+        K: Float[Tensor, "B H_G 1 S D"] = K.unsqueeze(2)
         K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
         K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, -1, self.d_model // self.n_heads)
 
-        V: Float[Tensor, "B H_G 1 S D"] = V_before_expand.unsqueeze(2)
+        V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
         V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
         V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, -1, self.d_model // self.n_heads)
 

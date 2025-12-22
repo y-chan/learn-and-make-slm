@@ -38,8 +38,9 @@ class DecoderBase(nn.Module):
         tokenizer: tiktoken.Encoding | None = None,
     ) -> Int[Tensor, "1 S"]:
         assert starts.size(0) == 1, "starts must be a 1D tensor"
-        x = starts
-        count = 0
+        x: Tensor = starts
+        count: int = 0
+
         if tokenizer is not None:
             decoded = tokenizer.decode(starts[0].tolist())
             print("".join(decoded), end="", flush=True)
@@ -60,13 +61,13 @@ class DecoderBase(nn.Module):
                 output_prob = self.softmax(output / temperature)
                 # 最後の位置の確率分布からサンプリング
                 next_token_probs = output_prob[:, -1, :]  # [B, V]
-                next_token_indices = None
+                next_token_indices: Tensor | None = None
                 if top_k is not None:
                     next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
                     next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
                 # torch.multinomialでカテゴリカル分布からサンプリング
                 next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
-                if output_indices is not None:
+                if next_token_indices is not None:
                     next_token = torch.gather(next_token_indices, dim=-1, index=next_token)
 
             x = torch.cat([x, next_token], dim=-1)

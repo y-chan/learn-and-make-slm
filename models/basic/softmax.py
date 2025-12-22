@@ -10,11 +10,3 @@ class Softmax(nn.Module):
         x_max = x.max(dim=-1, keepdim=True)[0]
         x_exp = (x - x_max).exp()
         return x_exp / x_exp.sum(dim=-1, keepdim=True)
-
-class SoftmaxWithTemperature(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.softmax = Softmax()
-
-    def forward(self, x: Tensor, T: float) -> Tensor:
-        return self.softmax(x / T)

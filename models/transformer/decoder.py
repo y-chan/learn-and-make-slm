@@ -4,7 +4,7 @@ import tiktoken
 from torch import nn, Tensor
 from models.transformer.decoder_layer import DecoderLayer
 from models.basic.linear import Linear
-from models.basic.softmax import SoftmaxWithTemperature
+from models.basic.softmax import Softmax
 from jaxtyping import Float, Int, Bool
 from models.basic.embedding import Embedding
 from utils.mask import make_non_pad_mask
@@ -23,7 +23,7 @@ class Decoder(nn.Module):
         )
         self.linear_out = Linear(d_model, n_vocab)
 
-        self.softmax = SoftmaxWithTemperature()
+        self.softmax = Softmax()
 
     def forward(
         self,
@@ -67,13 +67,13 @@ class Decoder(nn.Module):
                 # argmax: Greedy Encodingによる最も確率の高いトークンを選択
                 next_token = output.argmax(dim=-1)[:, -1:]
             else:
-                output_prob = self.softmax(output, temperature)
+                output_prob = self.softmax(output / temperature)
                 # 最後の位置の確率分布からサンプリング
                 next_token_probs = output_prob[:, -1, :]  # [B, V]
                 next_token_indices = None
                 if top_k is not None:
                     next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
-                    next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True) # 再正規化
+                    next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
                 # torch.multinomialでカテゴリカル分布からサンプリング
                 next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
                 if output_indices is not None:

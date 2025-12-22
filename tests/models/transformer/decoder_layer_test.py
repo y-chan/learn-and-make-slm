@@ -16,6 +16,7 @@ def test_gpt_2_decoder_layer_shape():
 
     assert output.shape == (batch_size, seq_len, d_model)
 
+
 def test_gpt_oss_decoder_layer_shape():
     """GPT-OSSのDecoderLayerの出力形状を確認"""
     batch_size = 2

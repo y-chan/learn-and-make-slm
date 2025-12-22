@@ -5,6 +5,7 @@ from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
+from utils.kv_cache import KVCache
 from utils.mask import make_pad_mask
 from models.transformer.rope import RotaryPositionalEncoding
 
@@ -139,6 +140,11 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads")
+
+        self.cache = KVCache()
+        self.cache_enabled: bool = False
+        self.cache_index: int | None = None
+        self.current_seq_len: int = 0
         self.d_model = d_model
         self.n_heads = n_heads
         self.linear_q = Linear(d_model, d_model)
@@ -148,6 +154,18 @@ class MultiHeadAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
+    def enable_kv_cache(self) -> None:
+        """Enable KV cache for inference."""
+        self.cache_enabled = True
+
+    def disable_kv_cache(self) -> None:
+        """Disable KV cache and reset."""
+        self.cache_enabled = False
+        if self.cache_index is not None and len(self.cache) > 0:
+            self.cache.reset(self.cache_index)
+        self.cache_index = None
+        self.current_seq_len = 0
+
     def forward(
         self,
         x: Float[Tensor, "B S D={self.d_model}"],
@@ -155,6 +173,13 @@ class MultiHeadAttention(nn.Module):
     ) -> Float[Tensor, "B S D"]:
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
+
+        if self.cache_enabled:
+            assert seq_len == 1, (
+                f"When cache is enabled, expected seq_len=1 but got {seq_len}. "
+                "For cached inference, pass one token at a time."
+            )
+
         Q = (
             self.linear_q(x).view(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )  # (batch_size, n_heads, seq_len, d_k)
@@ -166,13 +191,34 @@ class MultiHeadAttention(nn.Module):
         )  # (batch_size, n_heads, seq_len, d_k)
 
         if self.rope is not None:
-            Q = self.rope(Q)
-            K = self.rope(K)
+            if self.cache_enabled:
+                Q = self.rope.apply_rotary_pos_emb(Q, position_offset=self.current_seq_len)
+                K = self.rope.apply_rotary_pos_emb(K, position_offset=self.current_seq_len)
+            else:
+                Q = self.rope(Q)
+                K = self.rope(K)
 
-        attention = self.attention(Q, K, V, seq_lens)
+        if self.cache_enabled:
+            from utils.kv_cache import CacheEntry
+
+            if self.cache_index is None:
+                self.cache_index = self.cache.append(CacheEntry, K, V)
+                self.current_seq_len = 1
+            else:
+                K, V = self.cache.update(self.cache_index, K, V)
+                self.current_seq_len += 1
+
+            attention = self.attention(Q, K, V, seq_lens=None)
+        else:
+            attention = self.attention(Q, K, V, seq_lens)
+
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
+
+        if self.cache_enabled:
+            assert output.size(1) == 1, f"Expected output seq_len=1 when cache enabled, got {output.size(1)}"
+
         return output
 
 
@@ -180,6 +226,10 @@ class GroupedQueryAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, n_groups: int, use_rope: bool = False):
         super().__init__()
         assert n_heads % n_groups == 0
+        self.cache = KVCache()
+        self.cache_enabled: bool = False
+        self.cache_index: int | None = None
+        self.current_seq_len: int = 0
         self.d_model = d_model
         self.n_heads = n_heads
         self.n_groups = n_groups
@@ -191,40 +241,82 @@ class GroupedQueryAttention(nn.Module):
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
 
+    def enable_kv_cache(self) -> None:
+        """Enable KV cache for inference."""
+        self.cache_enabled = True
+
+    def disable_kv_cache(self) -> None:
+        """Disable KV cache and reset."""
+        self.cache_enabled = False
+        if self.cache_index is not None and len(self.cache) > 0:
+            self.cache.reset(self.cache_index)
+        self.cache_index = None
+        self.current_seq_len = 0
+
     def forward(
         self,
         x: Float[Tensor, "B S D={self.d_model}"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
+
+        if self.cache_enabled:
+            assert seq_len == 1, (
+                f"When cache is enabled, expected seq_len=1 but got {seq_len}. "
+                "For cached inference, pass one token at a time."
+            )
+
         Q: Float[Tensor, "B H={self.n_heads} S D"] = (
             self.linear_q(x).reshape(batch_size, seq_len, self.n_heads, self.d_model // self.n_heads).transpose(1, 2)
         )
 
-        K: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = (
+        K_before_expand: Float[Tensor, "B H_G={self.n_heads}//{self.n_groups} S D"] = (
             self.linear_k(x)
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
         )
-        K: Float[Tensor, "B H_G 1 S D"] = K.unsqueeze(2)
-        K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
-        K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
-
-        V: Float[Tensor, "B H_G S D"] = (
+        V_before_expand: Float[Tensor, "B H_G S D"] = (
             self.linear_v(x)
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
         )
-        V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
-        V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
-        V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
         if self.rope is not None:
-            Q = self.rope(Q)
-            K = self.rope(K)
+            if self.cache_enabled:
+                Q = self.rope.apply_rotary_pos_emb(Q, position_offset=self.current_seq_len)
+                K_before_expand = self.rope.apply_rotary_pos_emb(K_before_expand, position_offset=self.current_seq_len)
+            else:
+                Q = self.rope(Q)
+                K_before_expand = self.rope(K_before_expand)
 
-        attention = self.attention(Q, K, V, seq_lens)
+        if self.cache_enabled:
+            from utils.kv_cache import CacheEntry
+
+            if self.cache_index is None:
+                self.cache_index = self.cache.append(CacheEntry, K_before_expand, V_before_expand)
+                self.current_seq_len = 1
+            else:
+                K_before_expand, V_before_expand = self.cache.update(self.cache_index, K_before_expand, V_before_expand)
+                self.current_seq_len += 1
+
+        K: Float[Tensor, "B H_G 1 S D"] = K_before_expand.unsqueeze(2)
+        K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
+        K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, -1, self.d_model // self.n_heads)
+
+        V: Float[Tensor, "B H_G 1 S D"] = V_before_expand.unsqueeze(2)
+        V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
+        V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, -1, self.d_model // self.n_heads)
+
+        if self.cache_enabled:
+            attention = self.attention(Q, K, V, seq_lens=None)
+        else:
+            attention = self.attention(Q, K, V, seq_lens)
+
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
+
+        if self.cache_enabled:
+            assert output.size(1) == 1, f"Expected output seq_len=1 when cache enabled, got {output.size(1)}"
+
         return output

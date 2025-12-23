@@ -1,4 +1,5 @@
 from typing import Final
+import sys
 import torch
 import tiktoken
 
@@ -47,12 +48,12 @@ class DecoderBase(nn.Module):
     @torch.no_grad()
     def infer(
         self,
-        starts: Int[Tensor, "1 S"],
+        starts: Int[Tensor, "1 S_in"],
         max_token_count: int | None = None,
         temperature: float = 0.0,
         top_k: int | None = None,
         tokenizer: tiktoken.Encoding | None = None,
-    ) -> Int[Tensor, "1 S"]:
+    ) -> Int[Tensor, "1 S_out"]:
         try:
             if self.enable_cache:
                 self._activate_caches()
@@ -71,9 +72,11 @@ class DecoderBase(nn.Module):
                 return True
 
             while loop_condition(count=count):
-                output = self(x.detach().clone())
-                # TODO: temperatureなどを考慮したサンプリングを実装する
-                # TODO: KVキャッシュを考慮した形にする
+                if self.enable_cache:
+                    # キャッシュを使う場合は、一番最後のトークンのみ渡す
+                    output = self(x.detach().clone()[:, -1:])
+                else:
+                    output = self(x.detach().clone())
                 if temperature == 0.0:
                     # argmax: Greedy Decodingによる最も確率の高いトークンを選択
                     next_token = output.argmax(dim=-1)[:, -1:]
@@ -95,8 +98,10 @@ class DecoderBase(nn.Module):
                 if next_token[0, 0] == self.end_token_id:
                     break
                 if tokenizer is not None:
-                    next_token = tokenizer.decode([next_token.item()])
-                    print(next_token[0], end="", flush=True)
+                    next_token = tokenizer.decode_tokens_bytes([next_token.item()])
+                    for byte in next_token:
+                        sys.stdout.buffer.write(byte)
+                    sys.stdout.flush()
             return x
         finally:
             if self.enable_cache:

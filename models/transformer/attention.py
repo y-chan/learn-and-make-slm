@@ -32,11 +32,11 @@ class ScaledDotProductAttention(nn.Module):
 
     def xformers_forward(
         self,
-        Q: Float[Tensor, "B H S D={self.d_k}"],
-        K: Float[Tensor, "B H S D"],
-        V: Float[Tensor, "B H S D"],
+        Q: Float[Tensor, "B H S_q D={self.d_k}"],
+        K: Float[Tensor, "B H S_k D"],
+        V: Float[Tensor, "B H S_k D"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
-    ) -> Float[Tensor, "B H S D"]:
+    ) -> Float[Tensor, "B H S_q D"]:
         """
         xformersの`memory_efficient_attention`を用いてSDPAを計算する。
         おそらく内部でFlash Attention 2を実行していると思われる。
@@ -79,19 +79,32 @@ class ScaledDotProductAttention(nn.Module):
         # この方式であればメモリ効率の良いAttentionを計算できる
         # [[   0,    0, -inf, -inf, -inf, -inf, -inf],
         #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
         attn_bias, Q_reshaped, K_reshaped, V_reshaped = fmha.BlockDiagonalMask.from_tensor_lists_qkv(Q_list, K_list, V_list)
+        # if not using cache, make causal mask
+        if Q_reshaped.size(1) == K_reshaped.size(1):
+            # 学習の際、後ろを見ずにSoftmaxを計算するため、causal mask(LowerTriangularMaskを組み合わせたもの)を作成する
+            # 以前のmaskを以下のように変形する
+            # [[   0, -inf, -inf, -inf, -inf, -inf, -inf],
+            #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0  -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
+            attn_bias = attn_bias.make_causal()
 
         out: Float[Tensor, "1 S_total H D={self.d_k}"] = xops.memory_efficient_attention(
             Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
         )  # type: ignore
 
-        # 系列を結合していたものをバッチごとに分割する
-        list_out: list[Float[Tensor, "1 S_i H D={self.d_k}"]] = attn_bias.split(out)
+        # 系列を結合していたものをQueryの情報に基づいてバッチごとに分割する
+        # Queryの系列長がKVのものと異なる事がある(推論時)ため
+        list_out: list[Float[Tensor, "1 S_i H D={self.d_k}"]] = attn_bias.split_queries(out)
         # もとの形状に戻す
         # もとの形状に戻す際、後段の計算を安定させるため+reference実装に合わせるため0で初期化された行列を使う
         padded_out: Float[Tensor, "B S H D={self.d_k}"] = torch.zeros_like(Q)
@@ -105,12 +118,23 @@ class ScaledDotProductAttention(nn.Module):
 
     def reference_forward(
         self,
-        Q: Float[Tensor, "B H S D={self.d_k}"],
-        K: Float[Tensor, "B H S D"],
-        V: Float[Tensor, "B H S D"],
+        Q: Float[Tensor, "B H S_q D={self.d_k}"],
+        K: Float[Tensor, "B H S_k D"],
+        V: Float[Tensor, "B H S_k D"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
-    ) -> Float[Tensor, "B H S D"]:
-        scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
+    ) -> Float[Tensor, "B H S_q D"]:
+        scores: Float[Tensor, "B H S_q S_k"] = (Q @ K.transpose(-2, -1)) * self.scale
+
+        # make causal mask with diagonal
+        s_q = scores.size(-2)
+        s_k = scores.size(-1)
+        start = max(0, s_k - s_q)
+        causal_mask: Bool[Tensor, "S_q S_k"] = torch.tril(
+            torch.ones((s_q, s_k), device=scores.device, dtype=torch.bool),
+            diagonal=start,
+        )
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
         if seq_lens is not None:
             # make_pad_maskにmaxlenを明示的に渡す
             # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
@@ -125,9 +149,9 @@ class ScaledDotProductAttention(nn.Module):
 
     def forward(
         self,
-        Q: Float[Tensor, "B H S D={self.d_k}"],
-        K: Float[Tensor, "B H S D"],
-        V: Float[Tensor, "B H S D"],
+        Q: Float[Tensor, "B H S_q D={self.d_k}"],
+        K: Float[Tensor, "B H S_k D"],
+        V: Float[Tensor, "B H S_k D"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Tensor:
         try:
@@ -318,6 +342,8 @@ class GroupedQueryAttention(nn.Module):
         else:
             # non-cached
             attention = self.attention(Q, K, V, seq_lens)
+            # if len(K[0, 0]) == 2:
+            #     print(f"{len(K[0, 0])} Q: {attention[0, 0, 1]}")
 
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)

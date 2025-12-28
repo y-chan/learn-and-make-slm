@@ -75,12 +75,24 @@ class ScaledDotProductAttention(nn.Module):
         # この方式であればメモリ効率の良いAttentionを計算できる
         # [[   0,    0, -inf, -inf, -inf, -inf, -inf],
         #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
         attn_bias, Q_reshaped, K_reshaped, V_reshaped = fmha.BlockDiagonalMask.from_tensor_lists_qkv(Q_list, K_list, V_list)
+        # if not using cache(or first step), make causal mask
+        if Q_reshaped.size(1) == K_reshaped.size(1):
+            # 学習の際、後ろを見ずにSoftmaxを計算するため、causal mask(LowerTriangularMaskを組み合わせたもの)を作成する
+            # 以前のmaskを以下のように変形する
+            # [[   0, -inf, -inf, -inf, -inf, -inf, -inf],
+            #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0  -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
+            attn_bias = attn_bias.make_causal()
 
         out: Float[Tensor, "1 S_total H D={self.d_k}"] = xops.memory_efficient_attention(
             Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
@@ -107,6 +119,17 @@ class ScaledDotProductAttention(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B H S D"]:
         scores: Float[Tensor, "B H S S"] = (Q @ K.transpose(-2, -1)) * self.scale
+
+        # make causal mask with diagonal
+        s_q = scores.size(-2)
+        s_k = scores.size(-1)
+        start = max(0, s_k - s_q)
+        causal_mask: Bool[Tensor, "S_q S_k"] = torch.tril(
+            torch.ones((s_q, s_k), device=scores.device, dtype=torch.bool),
+            diagonal=start,
+        )
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
         if seq_lens is not None:
             # make_pad_maskにmaxlenを明示的に渡す
             # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない

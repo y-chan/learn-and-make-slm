@@ -5,7 +5,7 @@ import tiktoken
 
 from torch import nn, Tensor
 from models.basic.layer_norm import LayerNorm
-from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention
+from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention, _INTERNAL_INITIAL_CACHE_INDEX
 from models.transformer.decoder_layer import GPT2DecoderLayer, GPTOSSDecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import Softmax
@@ -61,6 +61,10 @@ class DecoderBase(nn.Module):
             assert starts.size(0) == 1, "starts must be a 1D tensor"
             x: Tensor = starts
             count: int = 0
+
+            if self.enable_cache and x.size(1) > 1:
+                # キャッシュを使う場合は、一番最後のトークンを除いてキャッシュを準備する
+                self(x.detach().clone()[:, :-1])
 
             if tokenizer is not None:
                 decoded = tokenizer.decode(starts[0].tolist())
@@ -154,11 +158,13 @@ class GPT2Decoder(DecoderBase):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
         positional_offset = 0
+        # FIXME: より良い実装を模索する
         if self.enable_cache:
-            assert x.size(1) == 1, "When using cache, x must have sequence length 1"
-            # FIXME: より良い実装を模索する
-            if self.decoder_layers[0].multi_head_attention._active_cache is not None:
-                positional_offset = self.decoder_layers[0].multi_head_attention._current_seq_len
+            _active_cache = self.decoder_layers[0].multi_head_attention._active_cache
+            if _active_cache is not None and _active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
+                assert x.size(1) == 1, "When using cache, x must have sequence length 1"
+
+            positional_offset = self.decoder_layers[0].multi_head_attention._current_seq_len
 
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
         x = self.positional_encoding(x, positional_offset)

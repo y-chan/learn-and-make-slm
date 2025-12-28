@@ -174,7 +174,8 @@ class MultiHeadAttention(nn.Module):
         batch_size, seq_len, _ = x.size()
 
         # When using cache, We can only process one token at a time.
-        if self._active_cache is not None:
+        use_cache = self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX
+        if use_cache:
             assert seq_len == 1, (
                 f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
             )
@@ -191,7 +192,7 @@ class MultiHeadAttention(nn.Module):
 
         if self.rope is not None:
             positional_offset: int = 0
-            if self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
+            if use_cache:
                 # when cached, we need to indicate current K/Q position with positional_offset
                 positional_offset = self._current_seq_len
 
@@ -207,10 +208,10 @@ class MultiHeadAttention(nn.Module):
                     key=K,
                     value=V,
                 )
-                self._current_seq_len = 1
+                self._current_seq_len = seq_len
             else:
                 K, V = self._kv_cache.update(self._active_cache, K, V)
-                self._current_seq_len += 1
+                self._current_seq_len += seq_len
 
             attention = self.attention(Q, K, V, seq_lens=None)
         else:
@@ -221,7 +222,7 @@ class MultiHeadAttention(nn.Module):
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
 
-        if self._active_cache is not None:
+        if use_cache:
             # When using cache, We can only process one token at a time.
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
@@ -265,7 +266,8 @@ class GroupedQueryAttention(nn.Module):
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
         # When using cache, We can only process one token at a time.
-        if self._active_cache is not None:
+        use_cache = self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX
+        if use_cache:
             assert seq_len == 1, (
                 f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
             )
@@ -294,7 +296,7 @@ class GroupedQueryAttention(nn.Module):
 
         if self.rope is not None:
             positional_offset: int = 0
-            if self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
+            if use_cache:
                 # when cached, we need to indicate current K/Q position with positional_offset
                 positional_offset = self._current_seq_len
 
@@ -310,10 +312,10 @@ class GroupedQueryAttention(nn.Module):
                     key=K,
                     value=V,
                 )
-                self._current_seq_len = 1
+                self._current_seq_len = seq_len
             else:
                 K, V = self._kv_cache.update(self._active_cache, K, V)
-                self._current_seq_len += 1
+                self._current_seq_len += seq_len
 
             attention = self.attention(Q, K, V, seq_lens=None)
         else:
@@ -325,7 +327,7 @@ class GroupedQueryAttention(nn.Module):
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
 
         # When using cache, We can only process one token at a time.
-        if self._active_cache is not None:
+        if use_cache:
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
                 f"with cache index {self._active_cache}."

@@ -139,7 +139,7 @@ class ScaledDotProductAttention(nn.Module):
             # make_pad_maskにmaxlenを明示的に渡す
             # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
             maxlen = Q.size(-2)
-            mask: Bool[Tensor, "B 1 1 S"] = (
+            mask: Bool[Tensor, "B 1 1 S_q"] = (
                 make_pad_mask(seq_lens, maxlen=maxlen).to(scores.device).unsqueeze(1).unsqueeze(1)
             )
             scores = scores.masked_fill(mask, float("-inf"))

@@ -153,8 +153,15 @@ class GPT2Decoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        positional_offset = 0
+        if self.enable_cache:
+            assert x.size(1) == 1, "When using cache, x must have sequence length 1"
+            # FIXME: より良い実装を模索する
+            if self.decoder_layers[0].multi_head_attention._active_cache is not None:
+                positional_offset = self.decoder_layers[0].multi_head_attention._current_seq_len
+
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
-        x = self.positional_encoding(x)
+        x = self.positional_encoding(x, positional_offset)
 
         for layer in self.decoder_layers:
             x = layer(x, seq_lens)

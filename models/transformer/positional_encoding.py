@@ -7,9 +7,9 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         self.d_model = d_model
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, positional_offset: int = 0) -> Tensor:
         seq_len = x.size(1)
-        pos = torch.arange(seq_len, dtype=torch.float, device=x.device).unsqueeze(1)
+        pos = torch.arange(positional_offset, positional_offset + seq_len, dtype=torch.float, device=x.device).unsqueeze(1)
         i = torch.arange(self.d_model, dtype=torch.float, device=x.device).unsqueeze(0)
         angle_rates = 1 / torch.pow(10000, (2 * (i // 2)) / self.d_model)
         angle_rads = pos * angle_rates

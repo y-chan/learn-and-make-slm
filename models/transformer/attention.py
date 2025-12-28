@@ -163,6 +163,7 @@ class MultiHeadAttention(nn.Module):
         if self._active_cache is not None:
             self._kv_cache.reset(self._active_cache)
             self._active_cache = None
+        self._current_seq_len = 0
 
     def forward(
         self,

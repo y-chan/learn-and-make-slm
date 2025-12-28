@@ -12,7 +12,7 @@ from tqdm import tqdm
 import yaml
 
 from config import SLMConfig
-from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
+from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate
 from models.transformer.decoder import GPT2Decoder, GPTOSSDecoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
@@ -41,7 +41,6 @@ def validate(
     with torch.no_grad():
         for _batch in tqdm(test_loader, desc="Validation", dynamic_ncols=True, position=2):
             batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
-            # randomized_lengths = random_end_lengths(batch["lengths"] - 1)
             seq_lengths = batch["lengths"] - 1
 
             with torch.amp.autocast("cuda", enabled=False):
@@ -126,7 +125,6 @@ def train(
             try:
                 # データをGPUに転送
                 batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
-                randomized_lengths = random_end_lengths(batch["lengths"] - 1)
 
                 # === Gradient Accumulationサイクルの開始 ===
                 # 累積サイクルの最初だけ勾配をゼロクリア
@@ -137,8 +135,8 @@ def train(
                 # === 1. 順伝播 (Forward Pass) ===
                 # モデルに入力を与えて、lossを計算する
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    output = model(batch["tokens_ids"][:, :-1], randomized_lengths)
-                    loss = model.loss(output, batch["tokens_ids"][:, 1:], randomized_lengths)
+                    output = model(batch["tokens_ids"][:, :-1], batch["lengths"] - 1)
+                    loss = model.loss(output, batch["tokens_ids"][:, 1:], batch["lengths"] - 1)
 
                 # === 2. 逆伝播 (Backward Pass) ===
                 # loss.backward()で勾配を計算し、param.gradに加算

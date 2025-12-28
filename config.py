@@ -45,7 +45,7 @@ class YamlConfig:
 
 @dataclasses.dataclass
 class PathConfig(YamlConfig):
-    log_dir: pathlib.Path
+    log_dir: str
 
 
 @dataclasses.dataclass

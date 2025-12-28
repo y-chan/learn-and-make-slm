@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from dataset import dataset_collate, random_end_lengths
+from dataset import dataset_collate
 
 
 def test_dataset_collate_basic():
@@ -55,43 +55,3 @@ def test_dataset_collate_max_length_truncation():
     tokens = result["tokens_ids"][0].tolist()
     for i in range(1, len(tokens)):
         assert tokens[i] == tokens[i - 1] + 1
-
-
-def test_random_end_lengths_output():
-    lengths = torch.tensor([10, 20, 30])
-
-    result = random_end_lengths(lengths)
-
-    assert result.shape == lengths.shape
-    assert result.dtype == torch.long
-    assert not result.requires_grad
-
-
-def test_random_end_lengths_range():
-    torch.manual_seed(42)
-    lengths = torch.tensor([10, 20, 30, 40, 50])
-
-    for _ in range(100):
-        result = random_end_lengths(lengths)
-        assert torch.all(result >= 1)
-        assert torch.all(result <= lengths)
-
-
-def test_random_end_lengths_probability():
-    """50%の確率で元の長さが保持される"""
-    torch.manual_seed(42)
-    lengths = torch.tensor([100] * 1000)
-
-    result = random_end_lengths(lengths)
-
-    unchanged_count = (result == 100).sum().item()
-    assert 300 < unchanged_count < 700
-
-
-def test_random_end_lengths_minimum():
-    torch.manual_seed(42)
-    lengths = torch.tensor([1, 1, 1, 1])
-
-    result = random_end_lengths(lengths)
-
-    assert torch.all(result == 1)

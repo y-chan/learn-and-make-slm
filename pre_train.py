@@ -79,7 +79,7 @@ def train(
 ):
     # TensorBoardでlossや学習率の推移を記録するためのWriterを初期化
     train_log_dir = config.path.log_dir
-    test_log_dir = config.path.log_dir / "test"
+    test_log_dir = os.path.join(config.path.log_dir, "test")
     os.makedirs(train_log_dir, exist_ok=True)
     os.makedirs(test_log_dir, exist_ok=True)
 
@@ -87,7 +87,7 @@ def train(
     test_writer = SummaryWriter(log_dir=test_log_dir)
 
     # 学習時に用いた設定を保存
-    with open(train_log_dir / "config.yaml", "w") as f:
+    with open(os.path.join(train_log_dir, "config.yaml"), "w") as f:
         yaml.dump(dataclasses.asdict(config), f, default_flow_style=False, allow_unicode=True)
 
     # float16を使って計算を高速化する仕組み(Mixed Precision Training: AMP/混合精度訓練)を設定
@@ -283,7 +283,7 @@ def main():
     )
 
     # 学習途中から再開する場合、最新のチェックポイントを読み込む
-    model_dir = Path(config.path.log_dir)
+    model_dir = config.path.log_dir
     checkpoint_path = latest_checkpoint_path(model_dir, "checkpoint_*.pth")
     if checkpoint_path is not None:
         start_epoch = (

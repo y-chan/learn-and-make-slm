@@ -45,7 +45,7 @@ class YamlConfig:
 
 @dataclasses.dataclass
 class PathConfig(YamlConfig):
-    log_dir: pathlib.Path
+    log_dir: str
 
 
 @dataclasses.dataclass
@@ -55,6 +55,7 @@ class ModelConfig(YamlConfig):
     n_heads: int
     n_layers: int
     n_groups: int | None = None
+    rope_scale_factor: float = 1.0
 
 
 @dataclasses.dataclass

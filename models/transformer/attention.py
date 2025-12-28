@@ -8,7 +8,7 @@ from jaxtyping import Float, Bool, Int
 
 from utils.kv_cache import CacheEntry, KVCache
 from utils.mask import make_pad_mask
-from models.transformer.rope import RotaryPositionalEncoding
+from models.transformer.rope import RotaryPositionalEmbedding
 
 try:
     import xformers.ops as xops  # type: ignore
@@ -79,12 +79,24 @@ class ScaledDotProductAttention(nn.Module):
         # この方式であればメモリ効率の良いAttentionを計算できる
         # [[   0,    0, -inf, -inf, -inf, -inf, -inf],
         #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
-        #  [-inf, -inf,    0,     0,   0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+        #  [-inf, -inf,    0,    0,    0, -inf, -inf],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0],
         #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
         attn_bias, Q_reshaped, K_reshaped, V_reshaped = fmha.BlockDiagonalMask.from_tensor_lists_qkv(Q_list, K_list, V_list)
+        # if not using cache(or first step), make causal mask
+        if Q_reshaped.size(1) == K_reshaped.size(1):
+            # 学習の際、後ろを見ずにSoftmaxを計算するため、causal mask(LowerTriangularMaskを組み合わせたもの)を作成する
+            # 以前のmaskを以下のように変形する
+            # [[   0, -inf, -inf, -inf, -inf, -inf, -inf],
+            #  [   0,    0, -inf, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0, -inf, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0, -inf, -inf, -inf],
+            #  [-inf, -inf,    0,    0,    0, -inf, -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0  -inf],
+            #  [-inf, -inf, -inf, -inf, -inf,    0,    0]]
+            attn_bias = attn_bias.make_causal()
 
         out: Float[Tensor, "1 S_total H D={self.d_k}"] = xops.memory_efficient_attention(
             Q_reshaped, K_reshaped, V_reshaped, attn_bias=attn_bias, scale=float(self.scale)
@@ -112,6 +124,17 @@ class ScaledDotProductAttention(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B H S_q D"]:
         scores: Float[Tensor, "B H S_q S_k"] = (Q @ K.transpose(-2, -1)) * self.scale
+
+        # make causal mask with diagonal
+        s_q = scores.size(-2)
+        s_k = scores.size(-1)
+        start = max(0, s_k - s_q)
+        causal_mask: Bool[Tensor, "S_q S_k"] = torch.tril(
+            torch.ones((s_q, s_k), device=scores.device, dtype=torch.bool),
+            diagonal=start,
+        )
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
         if seq_lens is not None:
             # make_pad_maskにmaxlenを明示的に渡す
             # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
@@ -151,7 +174,7 @@ class MultiHeadAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
+        self.rope = RotaryPositionalEmbedding(d_model // n_heads) if use_rope else None
 
         self._kv_cache = KVCache()
         self._active_cache: int | None = None
@@ -234,7 +257,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class GroupedQueryAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, n_groups: int, use_rope: bool = False):
+    def __init__(self, d_model: int, n_heads: int, n_groups: int, use_rope: bool = False, rope_scale_factor: float = 1.0):
         super().__init__()
         assert n_heads % n_groups == 0
         self.d_model = d_model
@@ -246,7 +269,7 @@ class GroupedQueryAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model // n_groups)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEncoding(d_model // n_heads) if use_rope else None
+        self.rope = RotaryPositionalEmbedding(d_model // n_heads, scale_factor=rope_scale_factor) if use_rope else None
 
         self._kv_cache = KVCache()
         self._active_cache: int | None = None

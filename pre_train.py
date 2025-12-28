@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 import dataclasses
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import datasets
 import tiktoken
@@ -11,14 +12,17 @@ from tqdm import tqdm
 import yaml
 
 from config import SLMConfig
-from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate, random_end_lengths
-from models.transformer.decoder import DecoderBase, GPT2Decoder, GPTOSSDecoder
+from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate
+from models.transformer.decoder import GPT2Decoder, GPTOSSDecoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
 from utils.tools import to_device
 
+if TYPE_CHECKING:
+    from models.transformer.decoder import DecoderBase
+
 
 def validate(
-    model: DecoderBase,
+    model: "DecoderBase",
     test_loader: torch.utils.data.DataLoader,
     test_writer: SummaryWriter,
     tokenizer: tiktoken.Encoding,
@@ -37,7 +41,6 @@ def validate(
     with torch.no_grad():
         for _batch in tqdm(test_loader, desc="Validation", dynamic_ncols=True, position=2):
             batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
-            # randomized_lengths = random_end_lengths(batch["lengths"] - 1)
             seq_lengths = batch["lengths"] - 1
 
             with torch.amp.autocast("cuda", enabled=False):
@@ -66,7 +69,7 @@ def validate(
 
 def train(
     config: SLMConfig,
-    model: DecoderBase,
+    model: "DecoderBase",
     optimizer: torch.optim.Optimizer,
     train_loader: torch.utils.data.DataLoader,
     test_loader: torch.utils.data.DataLoader,
@@ -76,7 +79,7 @@ def train(
 ):
     # TensorBoardでlossや学習率の推移を記録するためのWriterを初期化
     train_log_dir = config.path.log_dir
-    test_log_dir = config.path.log_dir / "test"
+    test_log_dir = os.path.join(config.path.log_dir, "test")
     os.makedirs(train_log_dir, exist_ok=True)
     os.makedirs(test_log_dir, exist_ok=True)
 
@@ -84,7 +87,7 @@ def train(
     test_writer = SummaryWriter(log_dir=test_log_dir)
 
     # 学習時に用いた設定を保存
-    with open(train_log_dir / "config.yaml", "w") as f:
+    with open(os.path.join(train_log_dir, "config.yaml"), "w") as f:
         yaml.dump(dataclasses.asdict(config), f, default_flow_style=False, allow_unicode=True)
 
     # float16を使って計算を高速化する仕組み(Mixed Precision Training: AMP/混合精度訓練)を設定
@@ -122,7 +125,6 @@ def train(
             try:
                 # データをGPUに転送
                 batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
-                randomized_lengths = random_end_lengths(batch["lengths"] - 1)
 
                 # === Gradient Accumulationサイクルの開始 ===
                 # 累積サイクルの最初だけ勾配をゼロクリア
@@ -133,8 +135,8 @@ def train(
                 # === 1. 順伝播 (Forward Pass) ===
                 # モデルに入力を与えて、lossを計算する
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    output = model(batch["tokens_ids"][:, :-1], randomized_lengths)
-                    loss = model.loss(output, batch["tokens_ids"][:, 1:], randomized_lengths)
+                    output = model(batch["tokens_ids"][:, :-1], batch["lengths"] - 1)
+                    loss = model.loss(output, batch["tokens_ids"][:, 1:], batch["lengths"] - 1)
 
                 # === 2. 逆伝播 (Backward Pass) ===
                 # loss.backward()で勾配を計算し、param.gradに加算
@@ -261,6 +263,7 @@ def main():
                 config.model.n_heads,
                 config.model.n_groups,
                 tokenizer.eot_token,
+                config.model.rope_scale_factor,
             )
         case _:
             raise ValueError(f"Model type {config.model.model_type} not supported")
@@ -280,7 +283,7 @@ def main():
     )
 
     # 学習途中から再開する場合、最新のチェックポイントを読み込む
-    model_dir = Path(config.path.log_dir)
+    model_dir = config.path.log_dir
     checkpoint_path = latest_checkpoint_path(model_dir, "checkpoint_*.pth")
     if checkpoint_path is not None:
         start_epoch = (

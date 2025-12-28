@@ -42,11 +42,13 @@ class GPTOSSDecoderLayer(nn.Module):
     異なるのは、RMSNormではなくLayerNormを使っている点
     """
 
-    def __init__(self, d_model: int, n_heads: int, n_groups: int):
+    def __init__(self, d_model: int, n_heads: int, n_groups: int, rope_scale_factor: float = 1.0):
         super().__init__()
         self.d_model = d_model
         # masked multi-head self-attention(grouped query attention)
-        self.self_attn = GroupedQueryAttention(d_model=d_model, n_heads=n_heads, n_groups=n_groups, use_rope=True)
+        self.self_attn = GroupedQueryAttention(
+            d_model=d_model, n_heads=n_heads, n_groups=n_groups, use_rope=True, rope_scale_factor=rope_scale_factor
+        )
         self.norm1 = LayerNorm(d_model)
 
         # feed-forward

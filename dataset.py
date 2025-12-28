@@ -64,16 +64,3 @@ def dataset_collate(batch, torch_convert: bool = True, max_length: int = 512) ->
     if torch_convert:
         res = {k: torch.from_numpy(v) for k, v in res.items()}
     return res
-
-
-def random_end_lengths(lengths: Tensor) -> Tensor:
-    # 本来であれば、Transformerの学習においては上三角行列を生成し、
-    # それをマスクとして用いることで短い系列も学習要素として含めるが、
-    # 今回はFlash Attentionのために特殊なマスクを使用するため、
-    # lengthsを、50%の確率でランダムな長さに変更する形を取る。
-    with torch.no_grad():
-        # 最小でも1以上の長さを保証する
-        end_lengths = (torch.rand_like(lengths, dtype=torch.float) * (lengths - 1) + 1).long()
-        mask = torch.rand_like(lengths, dtype=torch.float) < 0.5
-        end_lengths = end_lengths * mask + lengths * ~mask
-    return end_lengths

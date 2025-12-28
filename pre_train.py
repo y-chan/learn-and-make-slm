@@ -264,6 +264,7 @@ def main():
                 config.model.n_groups,
                 tokenizer.eot_token,
                 config.model.rope_scale_factor,
+                config.model.use_sigmoid_gate,
             )
         case _:
             raise ValueError(f"Model type {config.model.model_type} not supported")

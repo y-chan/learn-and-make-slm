@@ -40,6 +40,7 @@ class GPTOSSDecoderLayer(nn.Module):
     """
     概ねGPT-OSSのDecoder Layerを再現している
     異なるのは、RMSNormではなくLayerNormを使っている点
+    また、Mixture of Expertsを使っていない点
     """
 
     def __init__(self, d_model: int, n_heads: int, n_groups: int, rope_scale_factor: float = 1.0):

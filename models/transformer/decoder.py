@@ -114,8 +114,8 @@ class GPT2Decoder(DecoderBase):
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
-        self.decoder_layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
-        self.layer_norm = LayerNorm([d_model])
+        self.layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
+        self.norm = LayerNorm([d_model])
         self.linear_out = Linear(d_model, n_vocab)
 
     def forward(
@@ -126,10 +126,10 @@ class GPT2Decoder(DecoderBase):
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
         x = self.positional_encoding(x)
 
-        for layer in self.decoder_layers:
+        for layer in self.layers:
             x = layer(x, seq_lens)
 
-        x = self.layer_norm(x)
+        x = self.norm(x)
         y: Float[Tensor, "B S V"] = self.linear_out(x)
         return y
 

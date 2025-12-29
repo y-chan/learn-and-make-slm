@@ -253,6 +253,7 @@ def main():
                 config.model.d_model,
                 config.model.n_heads,
                 tokenizer.eot_token,
+                config.model.use_sigmoid_gate,
             )
         case "gpt-oss":
             assert config.model.n_groups is not None, "n_groups must be provided for GPT-OSS"
@@ -264,6 +265,7 @@ def main():
                 config.model.n_groups,
                 tokenizer.eot_token,
                 config.model.rope_scale_factor,
+                config.model.use_sigmoid_gate,
             )
         case _:
             raise ValueError(f"Model type {config.model.model_type} not supported")

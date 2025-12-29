@@ -5,6 +5,7 @@ from models.basic.softmax import Softmax
 from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
+from models.transformer.activation import sigmoid
 from utils.mask import make_pad_mask
 from models.transformer.rope import RotaryPositionalEmbedding
 
@@ -158,7 +159,14 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, use_rope: bool = False):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int,
+        use_rope: bool = False,
+        rope_scale_factor: float = 1.0,
+        use_sigmoid_gate: bool = False,
+    ):
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads")
@@ -169,7 +177,9 @@ class MultiHeadAttention(nn.Module):
         self.linear_v = Linear(d_model, d_model)
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
-        self.rope = RotaryPositionalEmbedding(d_model // n_heads) if use_rope else None
+        self.rope = RotaryPositionalEmbedding(d_model // n_heads, scale_factor=rope_scale_factor) if use_rope else None
+
+        self.use_sigmoid_gate = use_sigmoid_gate
 
     def forward(
         self,
@@ -195,12 +205,23 @@ class MultiHeadAttention(nn.Module):
         attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().view(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
+        if self.use_sigmoid_gate:
+            # ref: https://arxiv.org/pdf/2505.06708
+            attention = sigmoid(attention)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
         return output
 
 
 class GroupedQueryAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, n_groups: int, use_rope: bool = False, rope_scale_factor: float = 1.0):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int,
+        n_groups: int,
+        use_rope: bool = False,
+        rope_scale_factor: float = 1.0,
+        use_sigmoid_gate: bool = False,
+    ):
         super().__init__()
         assert n_heads % n_groups == 0
         self.d_model = d_model
@@ -213,6 +234,8 @@ class GroupedQueryAttention(nn.Module):
         self.linear_out = Linear(d_model, d_model)
         self.attention = ScaledDotProductAttention(d_model // n_heads)
         self.rope = RotaryPositionalEmbedding(d_model // n_heads, scale_factor=rope_scale_factor) if use_rope else None
+
+        self.use_sigmoid_gate = use_sigmoid_gate
 
     def forward(
         self,
@@ -249,5 +272,8 @@ class GroupedQueryAttention(nn.Module):
         attention = self.attention(Q, K, V, seq_lens)
         attention = attention.transpose(1, 2)  # (batch_size, seq_len, n_heads, d_k)
         attention = attention.contiguous().reshape(batch_size, seq_len, self.d_model)  # (batch_size, seq_len, d_model)
+        if self.use_sigmoid_gate:
+            # ref: https://arxiv.org/pdf/2505.06708
+            attention = sigmoid(attention)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
         return output

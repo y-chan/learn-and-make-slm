@@ -66,7 +66,7 @@ def generate(
     temperature: float = 0.0,
     top_k: int | None = None,
     show_streaming: bool = True,
-) -> str:
+) -> tuple[str, int, float]:
     """プロンプトからテキストを生成する"""
     # プロンプトをトークンIDに変換
     input_ids = tokenizer.encode(prompt)
@@ -76,6 +76,7 @@ def generate(
     with torch.no_grad():
         with torch.amp.autocast("cuda", enabled=torch.cuda.is_available()):
             if show_streaming:
+                start_time = time.time()
                 output_ids = model.infer(
                     starts=input_tensor,
                     max_token_count=max_tokens,
@@ -83,8 +84,10 @@ def generate(
                     top_k=top_k,
                     tokenizer=tokenizer,
                 )
+                end_time = time.time()
                 print()  # 改行を追加
             else:
+                start_time = time.time()
                 output_ids = model.infer(
                     starts=input_tensor,
                     max_token_count=max_tokens,
@@ -92,9 +95,11 @@ def generate(
                     top_k=top_k,
                     tokenizer=None,
                 )
+                end_time = time.time()
+            token_num = output_ids.size(1) - input_tensor.size(1)
     # 生成されたトークンIDをテキストに変換
     output_text = tokenizer.decode(output_ids[0].tolist())
-    return output_text
+    return output_text, token_num, end_time - start_time
 
 
 def interactive_mode(
@@ -134,11 +139,13 @@ def interactive_mode(
                 continue
 
             print("\n--- Generated Text ---")
-            start_time = time.time()
-            generate(model, tokenizer, prompt, max_tokens, device, temperature, top_k, show_streaming=True)
-            end_time = time.time()
+            _, token_num, generation_time = generate(
+                model, tokenizer, prompt, max_tokens, device, temperature, top_k, show_streaming=True
+            )
             print("--- End ---")
-            print(f"Time: {end_time - start_time:.2f} seconds")
+            print(f"Time: {generation_time:.2f} seconds")
+            print(f"Token num: {token_num}")
+            print(f"Time per token: {generation_time / token_num:.2f} seconds")
 
         except KeyboardInterrupt:
             print("\n\n終了します。")
@@ -228,7 +235,7 @@ def main():
     if args.prompt is not None:
         # 単一のプロンプトを処理
         print("\n--- Generated Text ---")
-        output = generate(
+        output_text, token_num, generation_time = generate(
             model,
             tokenizer,
             args.prompt,
@@ -239,8 +246,11 @@ def main():
             show_streaming=not args.no_streaming,
         )
         if args.no_streaming:
-            print(output)
+            print(output_text)
         print("--- End ---")
+        print(f"Time: {generation_time:.2f} seconds")
+        print(f"Token num: {token_num}")
+        print(f"Time per token: {generation_time / token_num:.2f} seconds")
     else:
         # インタラクティブモード
         interactive_mode(model, tokenizer, args.max_tokens, device, args.temperature, args.top_k)

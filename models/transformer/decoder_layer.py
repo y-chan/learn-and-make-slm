@@ -11,11 +11,11 @@ class GPT2DecoderLayer(nn.Module):
     異なるのはFeed Forward BlockがGELUではなくSwishを使っている点
     """
 
-    def __init__(self, d_model: int, n_heads: int):
+    def __init__(self, d_model: int, n_heads: int, use_sigmoid_gate: bool = False):
         super().__init__()
         self.d_model = d_model
 
-        self.self_attn = MultiHeadAttention(d_model=d_model, n_heads=n_heads)
+        self.self_attn = MultiHeadAttention(d_model=d_model, n_heads=n_heads, use_sigmoid_gate=use_sigmoid_gate)
         self.norm1 = LayerNorm([d_model])
         self.ffn = FeedForwardSwish(d_model)
         self.norm2 = LayerNorm([d_model])

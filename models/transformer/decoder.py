@@ -109,12 +109,16 @@ class GPT2Decoder(DecoderBase):
     Decoder Layerの実装に一部差異がある
     """
 
-    def __init__(self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int):
+    def __init__(
+        self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int, use_sigmoid_gate: bool = False
+    ):
         super().__init__(n_vocab, d_model, end_token_id)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
-        self.layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [GPT2DecoderLayer(d_model, n_heads, use_sigmoid_gate=use_sigmoid_gate) for _ in range(n_layers)]
+        )
         self.norm = LayerNorm([d_model])
         self.linear_out = Linear(d_model, n_vocab)
 

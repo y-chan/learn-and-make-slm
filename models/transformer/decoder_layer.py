@@ -15,10 +15,10 @@ class GPT2DecoderLayer(nn.Module):
         super().__init__()
         self.d_model = d_model
 
-        self.multi_head_attention = MultiHeadAttention(d_model=d_model, n_heads=n_heads)
-        self.layer_norm1 = LayerNorm([d_model])
-        self.feed_forward_block = FeedForwardSwish(d_model)
-        self.layer_norm2 = LayerNorm([d_model])
+        self.self_attn = MultiHeadAttention(d_model=d_model, n_heads=n_heads)
+        self.norm1 = LayerNorm([d_model])
+        self.ffn = FeedForwardSwish(d_model)
+        self.norm2 = LayerNorm([d_model])
 
     def forward(
         self,
@@ -26,12 +26,12 @@ class GPT2DecoderLayer(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         residual = x
-        x = self.layer_norm1(x)
-        x = residual + self.multi_head_attention(x, seq_lens)
+        x = self.norm1(x)
+        x = residual + self.self_attn(x, seq_lens)
 
         residual = x
-        x = self.layer_norm2(x)
-        x = residual + self.feed_forward_block(x)
+        x = self.norm2(x)
+        x = residual + self.ffn(x)
 
         return x
 
@@ -40,6 +40,7 @@ class GPTOSSDecoderLayer(nn.Module):
     """
     概ねGPT-OSSのDecoder Layerを再現している
     異なるのは、RMSNormではなくLayerNormを使っている点
+    また、Mixture of Expertsを使っていない点
     """
 
     def __init__(

@@ -17,20 +17,37 @@ uv sync
 
 ## 実行
 
-これで動くのが理想
+### 学習
+
+任意のconfigファイルを指定して学習を行う。
+configファイルについては、[config](config)ディレクトリを参照。
 
 ```bash
-uv run train.py
+uv run train.py <config_file>
 ```
 
-一応、各モジュールごとに動作確認できるようにしてある。
+各モジュールはPyTestを使い、PyTorch標準のモジュールなどと出力が一致するか簡易的にテストを行っている。
+
+### 推論
+
+任意のconfigファイルを指定して推論を行う。
+以下の例以外はhelpを参照。
+
+```bash
+# インタラクティブモードで起動
+uv run infer.py <config_file>
+# temperature及びtop-kを指定して推論(temp=1.0, top-k=10)
+uv run infer.py <config_file> --temperature 1.0 --top-k 10
+# プロンプトを指定して推論(インタラクティブモードではない)
+uv run infer.py <config_file> --prompt "Hello,"
+```
 
 ## Tensor の型付け
 
-可読性の観点から、jaxtypings を使って Tensor に型付けすることを推奨する。
+可読性の観点から、jaxtyping を使って Tensor に型付けすることを推奨する。
 
 <https://docs.kidger.site/jaxtyping/api/array/>
 
 学習でのオーバーヘッドを避けるため `nn.Module` の実装に `@jaxtyped` を付与しないことを推奨しており、代わりに pytest を実行すると自動で jaxtyping の runtime checking が実行されるようにしてある。
 
-そのため、各 Module ごとに、出力の shape を見る程度の簡単なテストを追加して CI で Tensor の型付けが正しいか確認可能にすることを推奨する。 (tests/transformer/rope_test.py 程度のもので良い)
+そのため、各 Module ごとに、出力の shape を見る程度の簡単なテストを追加して CI で Tensor の型付けが正しいか確認可能にすることを推奨する。 ([tests/models/transformer/decoder_layer_test.py](tests/models/transformer/decoder_layer_test.py)程度のもので良い)

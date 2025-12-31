@@ -142,14 +142,24 @@ class GPT2Decoder(DecoderBase):
     """
 
     def __init__(
-        self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int, *, enable_cache: bool = False
+        self,
+        n_vocab: int,
+        n_layers: int,
+        d_model: int,
+        n_heads: int,
+        end_token_id: int,
+        use_sigmoid_gate: bool = False,
+        *,
+        enable_cache: bool = False,
     ):
         super().__init__(n_vocab, d_model, end_token_id, enable_cache=enable_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
-        self.decoder_layers = nn.ModuleList([GPT2DecoderLayer(d_model, n_heads) for _ in range(n_layers)])
-        self.layer_norm = LayerNorm([d_model])
+        self.layers = nn.ModuleList(
+            [GPT2DecoderLayer(d_model, n_heads, use_sigmoid_gate=use_sigmoid_gate) for _ in range(n_layers)]
+        )
+        self.norm = LayerNorm([d_model])
         self.linear_out = Linear(d_model, n_vocab)
 
     def forward(
@@ -169,10 +179,10 @@ class GPT2Decoder(DecoderBase):
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
         x = self.positional_encoding(x, positional_offset)
 
-        for layer in self.decoder_layers:
+        for layer in self.layers:
             x = layer(x, seq_lens)
 
-        x = self.layer_norm(x)
+        x = self.norm(x)
         y: Float[Tensor, "B S V"] = self.linear_out(x)
         return y
 
@@ -192,6 +202,7 @@ class GPTOSSDecoder(DecoderBase):
         n_groups: int,
         end_token_id: int,
         rope_scale_factor: float = 1.0,
+        use_sigmoid_gate: bool = False,
         *,
         enable_cache: bool = False,
     ):
@@ -200,7 +211,13 @@ class GPTOSSDecoder(DecoderBase):
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
             [
-                GPTOSSDecoderLayer(d_model=d_model, n_heads=n_heads, n_groups=n_groups, rope_scale_factor=rope_scale_factor)
+                GPTOSSDecoderLayer(
+                    d_model=d_model,
+                    n_heads=n_heads,
+                    n_groups=n_groups,
+                    rope_scale_factor=rope_scale_factor,
+                    use_sigmoid_gate=use_sigmoid_gate,
+                )
                 for _ in range(n_layers)
             ]
         )

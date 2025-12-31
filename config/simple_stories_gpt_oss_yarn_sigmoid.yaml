@@ -1,7 +1,7 @@
 dataset: "SimpleStories-Both"
 tokenizer: "cl100k_base"
 path:
-  log_dir: "logs/simple_stories_gpt_oss_yarn"
+  log_dir: "logs/simple_stories_gpt_oss_yarn_sigmoid"
 model:
   model_type: "gpt-oss"
   d_model: 512
@@ -9,6 +9,7 @@ model:
   n_groups: 2
   n_layers: 16
   rope_scale_factor: 16.0
+  use_sigmoid_gate: true
 
 train:
   manual_seed: 1234

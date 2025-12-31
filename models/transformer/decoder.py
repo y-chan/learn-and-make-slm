@@ -170,11 +170,11 @@ class GPT2Decoder(DecoderBase):
         positional_offset = 0
         # FIXME: より良い実装を模索する
         if self.enable_cache:
-            _active_cache = self.decoder_layers[0].multi_head_attention._active_cache
+            _active_cache = self.layers[0].self_attn._active_cache
             if _active_cache is not None and _active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
                 assert x.size(1) == 1, "When using cache, x must have sequence length 1"
 
-            positional_offset = self.decoder_layers[0].multi_head_attention._current_seq_len
+            positional_offset = self.layers[0].self_attn._current_seq_len
 
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
         x = self.positional_encoding(x, positional_offset)

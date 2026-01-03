@@ -34,7 +34,7 @@ class ScaledDotProductAttentionFunction(torch.autograd.Function):
         kv_num_heads: int,
         q_num_heads: int,
         scale: float,
-        seq_lens: Int[Tensor, "B"] | None = None,
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ):
         batch_size, _, seq_len, d_k = Q.size()
         # ONNX export時はGrouped Query Attentionのために手動でexpandする
@@ -82,11 +82,13 @@ class ScaledDotProductAttentionFunction(torch.autograd.Function):
         kv_num_heads: int,
         q_num_heads: int,
         scale: float,
-        seq_lens: Int[Tensor, "B"] | None = None,
+        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ):
         # past_key: torch.Tensor | None = None,
         # past_value: torch.Tensor | None = None,
-        return g.op("Attention", Q, K, V, is_causal_i=1, kv_num_heads_i=kv_num_heads, q_num_heads_i=q_num_heads, scale_f=scale)
+        return g.op(
+            "Attention", Q, K, V, is_causal_i=1, kv_num_heads_i=kv_num_heads, q_num_heads_i=q_num_heads, scale_f=scale
+        )
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -198,7 +200,7 @@ class ScaledDotProductAttention(nn.Module):
             warnings.warn("xFormers is not available, falling back to reference implementation")
             # 使えない状況（未対応のmaskやCPU/未実装カーネル等）は自前実装にフォールバック
             return ScaledDotProductAttentionFunction.forward(
-                Q, K, V, kv_num_heads=int(K.size(-3)), q_num_heads=int(Q.size(-3)), scale=self.scale, seq_lens=seq_lens
+                None, Q, K, V, kv_num_heads=int(K.size(-3)), q_num_heads=int(Q.size(-3)), scale=self.scale.item(), seq_lens=seq_lens
             )
 
 

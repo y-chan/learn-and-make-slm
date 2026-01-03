@@ -16,17 +16,32 @@ class RotaryPositionalEmbeddingFunction(torch.autograd.Function):
     def forward(
         ctx,
         x: Float[Tensor, "..."],
-        cos_cache: Float[Tensor, "B S_max D"],
-        sin_cache: Float[Tensor, "B S_max D"],
+        cos_cache: Float[Tensor, "S_max D"],
+        sin_cache: Float[Tensor, "S_max D"],
         position_ids: Int[Tensor, "B S"],
+        heads: int,
+        embedding_dim: int,
     ) -> Float[Tensor, "..."]:
-        # Use advanced indexing instead of gather to save memory
-        # Create batch indices [B, 1] to index along batch dimension
-        batch_size = cos_cache.size(0)
-        batch_indices = torch.arange(batch_size, device=position_ids.device, dtype=torch.long).unsqueeze(1)
+        if embedding_dim != cos_cache.size(-1):
+            cos_cache = (
+                cos_cache.unsqueeze(2)  # (seq_len, dim/2, 1)
+                .expand(cos_cache.size(0), -1, 2)  # (seq_len, dim/2, 2)
+                .reshape(cos_cache.size(0), -1)  # (seq_len, dim)
+            )
+            sin_cache = (
+                sin_cache.unsqueeze(2)  # (seq_len, dim/2, 1)
+                .expand(sin_cache.size(0), -1, 2)  # (seq_len, dim/2, 2)
+                .reshape(sin_cache.size(0), -1)  # (seq_len, dim)
+            )
 
-        cos = cos_cache[batch_indices, position_ids]  # (batch_size, seq_len, dim)
-        sin = sin_cache[batch_indices, position_ids]  # (batch_size, seq_len, dim)
+        cos = cos_cache[position_ids]  # (B, seq_len, dim)
+        sin = sin_cache[position_ids]  # (B, seq_len, dim)
+
+        # Handle multi-head case: x can be (B, H, S, D) or (B, S, D)
+        # Adjust cos/sin shape to match x
+        while cos.ndim < x.ndim:
+            cos = cos.unsqueeze(1)  # Add head dimension if needed
+            sin = sin.unsqueeze(1)
 
         return (x * cos) + (rotate_half(x) * sin)
 
@@ -34,11 +49,13 @@ class RotaryPositionalEmbeddingFunction(torch.autograd.Function):
     def symbolic(
         g,
         x: Float[Tensor, "..."],
-        cos_cache: Float[Tensor, "B S_max D"],
-        sin_cache: Float[Tensor, "B S_max D"],
+        cos_cache: Float[Tensor, "S_max D"],
+        sin_cache: Float[Tensor, "S_max D"],
         position_ids: Int[Tensor, "B S"],
+        heads: int,
+        embedding_dim: int,
     ) -> Float[Tensor, "..."]:
-        return g.op("RotaryEmbedding", x, cos_cache, sin_cache, position_ids)
+        return g.op("RotaryEmbedding", x, cos_cache, sin_cache, position_ids, interleaved_i=1, num_heads_i=heads, rotary_embedding_dim_i=embedding_dim)
 
 
 class RotaryPositionalEmbedding(nn.Module):
@@ -124,7 +141,8 @@ class RotaryPositionalEmbedding(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
         scale_factor: float,
-    ) -> tuple[Float[Tensor, "{max_seq_len} {dim}"], Float[Tensor, "{max_seq_len} {dim}"]]:  # noqa: F821
+        interleave: bool = True,
+    ) -> tuple[Float[Tensor, "{max_seq_len} D"], Float[Tensor, "{max_seq_len} D"]]:  # noqa: F821
         """
         Compute cos and sin matrices with YaRN interpolation.
         """
@@ -146,18 +164,21 @@ class RotaryPositionalEmbedding(nn.Module):
         else:  # use normal RoPE
             interpolated_thetas = base_thetas
 
-        # Expand to full dimension (interleave for cos/sin pairs)
-        thetas = (
-            interpolated_thetas.unsqueeze(1)  # (dim/2, 1)
-            .expand(-1, 2)  # (dim/2, 2)
-            .reshape(-1)  # (dim,)
-        )
+        if interleave:
+            # Expand to full dimension (interleave for cos/sin pairs)
+            thetas = (
+                interpolated_thetas.unsqueeze(1)  # (dim/2, 1)
+                .expand(-1, 2)  # (dim/2, 2)
+                .reshape(-1)  # (dim,)
+            )
+        else:
+            thetas = interpolated_thetas  # (dim/2)
 
         # Compute position indices
         pos = torch.arange(0, max_seq_len, dtype=dtype, device=device)  # (max_seq_len,)
 
         # Compute rotations
-        rotate = torch.outer(pos, thetas)  # (max_seq_len, dim)
+        rotate = torch.outer(pos, thetas)  # (max_seq_len, dim) or (max_seq_len, dim/2)
 
         # Apply attention scaling
         cos = torch.cos(rotate) * self.attention_scale
@@ -210,7 +231,7 @@ class RotaryPositionalEmbedding(nn.Module):
         input_ndim = x.ndim
         if input_ndim == 2:
             x = x.unsqueeze(0)  # [seq_len, dim] -> [1, seq_len, dim]
-        
+
         batch_size = x.size(0)
         seq_len = x.size(-2)
         total_seq_len = seq_len + positional_offset
@@ -249,18 +270,14 @@ class RotaryPositionalEmbedding(nn.Module):
                 device=x.device,
                 dtype=x.dtype,
                 scale_factor=self.scale_factor,
+                interleave=False,
             )
-            cos = cos.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
-            sin = sin.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
-
-            result = RotaryPositionalEmbeddingFunction.apply(x, cos, sin, position_ids)
+            result = RotaryPositionalEmbeddingFunction.apply(x, cos, sin, position_ids, x.size(1).item(), self.dim)
         else:
-            cos = self.cos.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
-            sin = self.sin.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
-            result = RotaryPositionalEmbeddingFunction.forward(None, x, cos, sin, position_ids)
-        
+            result = RotaryPositionalEmbeddingFunction.forward(None, x, self.cos, self.sin, position_ids, x.size(1), self.dim)
+
         # Remove batch dimension if input was 2D
         if input_ndim == 2:
             result = result.squeeze(0)  # [1, seq_len, dim] -> [seq_len, dim]
-        
+
         return result

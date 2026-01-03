@@ -58,7 +58,7 @@ class DecoderBase(nn.Module):
             if self.enable_internal_cache:
                 self._activate_caches()
 
-            assert starts.size(0) == 1, "starts must be a 1D tensor"
+            assert starts.size(0) == 1, "starts must have batch size 1"
             x: Tensor = starts
             count: int = 0
 

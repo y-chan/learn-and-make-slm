@@ -39,8 +39,6 @@ class Linear(nn.Module):
         self.bias = nn.Parameter(nonzero_randn(out_features) * (out_features**-0.5))
 
     def forward(self, x: Tensor) -> Tensor:
-        # ONNX Export時、組み込みオペレータを使用するための処理
-        if torch.onnx.is_in_onnx_export():
-            return LinearFunction.apply(x, self.weight, self.bias)
-        else:
-            return LinearFunction.forward(None, x, self.weight, self.bias)
+        # ONNX Export時、組み込みオペレータ(`Gemm`)があるが、
+        # バッチ次元があると動作しないため、そのままトレースさせる
+        return LinearFunction.forward(None, x, self.weight, self.bias)

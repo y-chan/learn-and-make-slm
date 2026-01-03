@@ -232,10 +232,20 @@ class GPTOSSDecoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        seq_len = x.size(1)
+
+        # When using cache with already cached tokens, ensure we only process one token at a time
+        if self.enable_internal_cache and self._current_seq_len > 0:
+            assert seq_len == 1, "When using cache with existing cached tokens, x must have sequence length 1"
+
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 
         for layer in self.layers:
             x = layer(x, seq_lens)
+
+        # Update sequence length after processing
+        if self.enable_internal_cache:
+            self._current_seq_len += seq_len
 
         output = self.linear_out(x)
         return output

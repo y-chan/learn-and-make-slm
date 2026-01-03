@@ -1,4 +1,4 @@
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor, nn
 import torch
 import math
@@ -9,6 +9,36 @@ def rotate_half(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
     x1, x2 = x[..., 0], x[..., 1]
     rotated = torch.stack((-x2, x1), dim=-1)  # [..., dim/2, 2]
     return rotated.reshape(*x.shape[:-2], -1)  # [..., dim]
+
+
+class RotaryPositionalEmbeddingFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        x: Float[Tensor, "..."],
+        cos_cache: Float[Tensor, "B S_max D"],
+        sin_cache: Float[Tensor, "B S_max D"],
+        position_ids: Int[Tensor, "B S"],
+    ) -> Float[Tensor, "..."]:
+        # Use advanced indexing instead of gather to save memory
+        # Create batch indices [B, 1] to index along batch dimension
+        batch_size = cos_cache.size(0)
+        batch_indices = torch.arange(batch_size, device=position_ids.device, dtype=torch.long).unsqueeze(1)
+
+        cos = cos_cache[batch_indices, position_ids]  # (batch_size, seq_len, dim)
+        sin = sin_cache[batch_indices, position_ids]  # (batch_size, seq_len, dim)
+
+        return (x * cos) + (rotate_half(x) * sin)
+
+    @staticmethod
+    def symbolic(
+        g,
+        x: Float[Tensor, "..."],
+        cos_cache: Float[Tensor, "B S_max D"],
+        sin_cache: Float[Tensor, "B S_max D"],
+        position_ids: Int[Tensor, "B S"],
+    ) -> Float[Tensor, "..."]:
+        return g.op("RotaryEmbedding", x, cos_cache, sin_cache, position_ids)
 
 
 class RotaryPositionalEmbedding(nn.Module):
@@ -176,6 +206,12 @@ class RotaryPositionalEmbedding(nn.Module):
         """
         Apply YaRN rotary positional encoding to input tensor.
         """
+        # Handle 2D input [seq_len, dim] by adding batch dimension
+        input_ndim = x.ndim
+        if input_ndim == 2:
+            x = x.unsqueeze(0)  # [seq_len, dim] -> [1, seq_len, dim]
+        
+        batch_size = x.size(0)
         seq_len = x.size(-2)
         total_seq_len = seq_len + positional_offset
 
@@ -200,7 +236,31 @@ class RotaryPositionalEmbedding(nn.Module):
                 scale_factor=self.scale_factor,
             )
 
-        cos = self.cos[positional_offset:total_seq_len, :]  # (seq_len, dim)
-        sin = self.sin[positional_offset:total_seq_len, :]  # (seq_len, dim)
+        position_ids = torch.arange(positional_offset, total_seq_len, dtype=torch.long, device=x.device)  # (seq_len,)
+        position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)  # (batch_size, seq_len)
 
-        return (x * cos) + (rotate_half(x) * sin)
+        # cos = self.cos[positional_offset:total_seq_len, :]  # (seq_len, dim)
+        # sin = self.sin[positional_offset:total_seq_len, :]  # (seq_len, dim)
+
+        if torch.onnx.is_in_onnx_export():
+            cos, sin = self._compute_rotates(
+                max_seq_len=total_seq_len,
+                dim=self.dim,
+                device=x.device,
+                dtype=x.dtype,
+                scale_factor=self.scale_factor,
+            )
+            cos = cos.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
+            sin = sin.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
+
+            result = RotaryPositionalEmbeddingFunction.apply(x, cos, sin, position_ids)
+        else:
+            cos = self.cos.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
+            sin = self.sin.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, seq_len, dim)
+            result = RotaryPositionalEmbeddingFunction.forward(None, x, cos, sin, position_ids)
+        
+        # Remove batch dimension if input was 2D
+        if input_ndim == 2:
+            result = result.squeeze(0)  # [1, seq_len, dim] -> [seq_len, dim]
+        
+        return result

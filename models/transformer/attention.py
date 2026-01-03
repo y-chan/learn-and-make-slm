@@ -2,7 +2,7 @@ from typing import Final
 import warnings
 from torch import nn, Tensor
 import torch
-from models.basic.softmax import Softmax
+from models.basic.softmax import SoftmaxFunction
 from models.basic.linear import Linear
 from jaxtyping import Float, Bool, Int
 
@@ -24,11 +24,75 @@ except Exception:
 _INTERNAL_INITIAL_CACHE_INDEX: Final = -1
 
 
+class ScaledDotProductAttentionFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        Q: Float[Tensor, "B H S_q D"],
+        K: Float[Tensor, "B H_G S_k D"],
+        V: Float[Tensor, "B H_G S_k D"],
+        kv_num_heads: int,
+        q_num_heads: int,
+        scale: float,
+        seq_lens: Int[Tensor, "B"] | None = None,
+    ):
+        batch_size, _, seq_len, d_k = Q.size()
+        # ONNX export時はGrouped Query Attentionのために手動でexpandする
+        if torch.onnx.is_in_onnx_export():
+            n_groups = q_num_heads // kv_num_heads
+
+            K: Float[Tensor, "B H_G 1 S_k D"] = K.unsqueeze(2)
+            K: Float[Tensor, "B H_G G S_k D"] = K.expand(-1, -1, n_groups, -1, -1)
+            K: Float[Tensor, "B H S_k D"] = K.reshape(batch_size, q_num_heads, seq_len, d_k)
+
+            V: Float[Tensor, "B H_G 1 S_k D"] = V.unsqueeze(2)
+            V: Float[Tensor, "B H_G G S_k D"] = V.expand(-1, -1, n_groups, -1, -1)
+            V: Float[Tensor, "B H S_k D"] = V.reshape(batch_size, q_num_heads, seq_len, d_k)
+
+        scores: Float[Tensor, "B H S_q S_k"] = (Q @ K.transpose(-2, -1)) * scale
+
+        # make causal mask with diagonal
+        s_q = scores.size(-2)
+        s_k = scores.size(-1)
+        start = max(0, s_k - s_q)
+        causal_mask: Bool[Tensor, "S_q S_k"] = torch.tril(
+            torch.ones((s_q, s_k), device=scores.device, dtype=torch.bool),
+            diagonal=start,
+        )
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
+        if seq_lens is not None:
+            # make_pad_maskにmaxlenを明示的に渡す
+            # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
+            maxlen = Q.size(-2)
+            mask: Bool[Tensor, "B 1 1 S_q"] = (
+                make_pad_mask(seq_lens, maxlen=maxlen).to(scores.device).unsqueeze(1).unsqueeze(1)
+            )
+            scores = scores.masked_fill(mask, float("-inf"))
+        attn_weights = SoftmaxFunction.forward(None, scores)
+        output = attn_weights @ V
+        return output
+
+    @staticmethod
+    def symbolic(
+        g,
+        Q: Float[Tensor, "B H S_q D"],
+        K: Float[Tensor, "B H_G S_k D"],
+        V: Float[Tensor, "B H_G S_k D"],
+        kv_num_heads: int,
+        q_num_heads: int,
+        scale: float,
+        seq_lens: Int[Tensor, "B"] | None = None,
+    ):
+        # past_key: torch.Tensor | None = None,
+        # past_value: torch.Tensor | None = None,
+        return g.op("Attention", Q, K, V, is_causal_i=1, kv_num_heads_i=kv_num_heads, q_num_heads_i=q_num_heads, scale_f=scale)
+
+
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, d_k: int):
         super().__init__()
         self.d_k = d_k
-        self.softmax = Softmax()
         self.scale = 1.0 / torch.sqrt(torch.tensor(d_k, dtype=torch.float32))
 
     def xformers_forward(
@@ -117,50 +181,25 @@ class ScaledDotProductAttention(nn.Module):
         padded_out: Float[Tensor, "B H S D={self.d_k}"] = padded_out.transpose(1, 2)
         return padded_out
 
-    def reference_forward(
-        self,
-        Q: Float[Tensor, "B H S_q D={self.d_k}"],
-        K: Float[Tensor, "B H S_k D"],
-        V: Float[Tensor, "B H S_k D"],
-        seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
-    ) -> Float[Tensor, "B H S_q D"]:
-        scores: Float[Tensor, "B H S_q S_k"] = (Q @ K.transpose(-2, -1)) * self.scale
-
-        # make causal mask with diagonal
-        s_q = scores.size(-2)
-        s_k = scores.size(-1)
-        start = max(0, s_k - s_q)
-        causal_mask: Bool[Tensor, "S_q S_k"] = torch.tril(
-            torch.ones((s_q, s_k), device=scores.device, dtype=torch.bool),
-            diagonal=start,
-        )
-        scores = scores.masked_fill(~causal_mask, float("-inf"))
-
-        if seq_lens is not None:
-            # make_pad_maskにmaxlenを明示的に渡す
-            # seq_lensは学習に使うシーケンス長を表すので、必ずしも最大長が含まれるとは限らない
-            maxlen = Q.size(-2)
-            mask: Bool[Tensor, "B 1 1 S_q"] = (
-                make_pad_mask(seq_lens, maxlen=maxlen).to(scores.device).unsqueeze(1).unsqueeze(1)
-            )
-            scores = scores.masked_fill(mask, float("-inf"))
-        attn_weights = self.softmax(scores)
-        output = attn_weights @ V
-        return output
-
     def forward(
         self,
         Q: Float[Tensor, "B H S_q D={self.d_k}"],
-        K: Float[Tensor, "B H S_k D"],
-        V: Float[Tensor, "B H S_k D"],
+        K: Float[Tensor, "B H_G S_k D"],
+        V: Float[Tensor, "B H_G S_k D"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
-    ) -> Float[Tensor, "B H S_q D"]:
+    ) -> Float[Tensor, "B H S_q D={self.d_k}"]:
+        if torch.onnx.is_in_onnx_export():
+            return ScaledDotProductAttentionFunction.apply(
+                Q, K, V, int(K.size(-3)), int(Q.size(-3)), self.scale.item(), seq_lens
+            )
         try:
             return self.xformers_forward(Q, K, V, seq_lens)
         except Exception:
             warnings.warn("xFormers is not available, falling back to reference implementation")
             # 使えない状況（未対応のmaskやCPU/未実装カーネル等）は自前実装にフォールバック
-            return self.reference_forward(Q, K, V, seq_lens)
+            return ScaledDotProductAttentionFunction.forward(
+                Q, K, V, kv_num_heads=int(K.size(-3)), q_num_heads=int(Q.size(-3)), scale=self.scale, seq_lens=seq_lens
+            )
 
 
 class MultiHeadAttention(nn.Module):
@@ -329,18 +368,21 @@ class GroupedQueryAttention(nn.Module):
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
         )
-        K: Float[Tensor, "B H_G 1 S D"] = K.unsqueeze(2)
-        K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
-        K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
         V: Float[Tensor, "B H_G S D"] = (
             self.linear_v(x)
             .reshape(batch_size, seq_len, self.n_heads // self.n_groups, self.d_model // self.n_heads)
             .transpose(1, 2)
         )
-        V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
-        V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
-        V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
+        # ONNX Export時はAttention Opが自動でExpandしてくれる
+        if not torch.onnx.is_in_onnx_export():
+            K: Float[Tensor, "B H_G 1 S D"] = K.unsqueeze(2)
+            K: Float[Tensor, "B H_G G S D"] = K.expand(-1, -1, self.n_groups, -1, -1)
+            K: Float[Tensor, "B H S D"] = K.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
+
+            V: Float[Tensor, "B H_G 1 S D"] = V.unsqueeze(2)
+            V: Float[Tensor, "B H_G G S D"] = V.expand(-1, -1, self.n_groups, -1, -1)
+            V: Float[Tensor, "B H S D"] = V.reshape(batch_size, self.n_heads, seq_len, self.d_model // self.n_heads)
 
         if self.rope is not None:
             positional_offset: int = 0

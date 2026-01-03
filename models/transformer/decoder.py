@@ -5,7 +5,7 @@ import tiktoken
 
 from torch import nn, Tensor
 from models.basic.layer_norm import LayerNorm
-from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention, _INTERNAL_INITIAL_CACHE_INDEX
+from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention
 from models.transformer.decoder_layer import GPT2DecoderLayer, GPTOSSDecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import Softmax
@@ -25,15 +25,18 @@ class DecoderBase(nn.Module):
         self.d_model = d_model
         self.end_token_id = end_token_id
         self.enable_internal_cache = enable_internal_cache
+        self._current_seq_len: int = 0
 
         self.softmax = Softmax()
 
     def _activate_caches(self) -> None:
+        self._current_seq_len = 0
         for module in self.modules():
             if isinstance(module, CACHEABLE_MODULES):
                 module._internal_activate_cache()
 
     def _invalidate_caches(self) -> None:
+        self._current_seq_len = 0
         for module in self.modules():
             if isinstance(module, CACHEABLE_MODULES):
                 module._internal_invalidate_cache()
@@ -167,20 +170,21 @@ class GPT2Decoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
-        positional_offset = 0
-        # FIXME: より良い実装を模索する
-        if self.enable_internal_cache:
-            _active_cache = self.layers[0].self_attn._active_internal_cache
-            if _active_cache is not None and _active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
-                assert x.size(1) == 1, "When using cache, x must have sequence length 1"
+        seq_len = x.size(1)
 
-            positional_offset = self.layers[0].self_attn._current_seq_len
+        # When using cache with already cached tokens, ensure we only process one token at a time
+        if self.enable_internal_cache and self._current_seq_len > 0:
+            assert seq_len == 1, "When using cache with existing cached tokens, x must have sequence length 1"
 
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
-        x = self.positional_encoding(x, positional_offset)
+        x = self.positional_encoding(x, self._current_seq_len)
 
         for layer in self.layers:
             x = layer(x, seq_lens)
+
+        # Update sequence length after processing
+        if self.enable_internal_cache:
+            self._current_seq_len += seq_len
 
         x = self.norm(x)
         y: Float[Tensor, "B S V"] = self.linear_out(x)
@@ -228,10 +232,20 @@ class GPTOSSDecoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        seq_len = x.size(1)
+
+        # When using cache with already cached tokens, ensure we only process one token at a time
+        if self.enable_internal_cache and self._current_seq_len > 0:
+            assert seq_len == 1, "When using cache with existing cached tokens, x must have sequence length 1"
+
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 
         for layer in self.layers:
             x = layer(x, seq_lens)
+
+        # Update sequence length after processing
+        if self.enable_internal_cache:
+            self._current_seq_len += seq_len
 
         output = self.linear_out(x)
         return output

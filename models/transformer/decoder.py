@@ -1,8 +1,11 @@
+from typing import Final
+import sys
 import torch
 import tiktoken
 
 from torch import nn, Tensor
 from models.basic.layer_norm import LayerNorm
+from models.transformer.attention import GroupedQueryAttention, MultiHeadAttention
 from models.transformer.decoder_layer import GPT2DecoderLayer, GPTOSSDecoderLayer
 from models.basic.linear import Linear
 from models.basic.softmax import Softmax
@@ -12,14 +15,31 @@ from models.transformer.positional_encoding import PositionalEncoding
 from utils.mask import make_non_pad_mask
 
 
+CACHEABLE_MODULES: Final = (MultiHeadAttention, GroupedQueryAttention)
+
+
 class DecoderBase(nn.Module):
-    def __init__(self, n_vocab: int, d_model: int, end_token_id: int):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_internal_cache: bool):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
         self.end_token_id = end_token_id
+        self.enable_internal_cache = enable_internal_cache
+        self._current_seq_len: int = 0
 
         self.softmax = Softmax()
+
+    def _activate_caches(self) -> None:
+        self._current_seq_len = 0
+        for module in self.modules():
+            if isinstance(module, CACHEABLE_MODULES):
+                module._internal_activate_cache()
+
+    def _invalidate_caches(self) -> None:
+        self._current_seq_len = 0
+        for module in self.modules():
+            if isinstance(module, CACHEABLE_MODULES):
+                module._internal_invalidate_cache()
 
     def forward(
         self,
@@ -31,53 +51,68 @@ class DecoderBase(nn.Module):
     @torch.no_grad()
     def infer(
         self,
-        starts: Int[Tensor, "1 S"],
+        starts: Int[Tensor, "1 S_in"],
         max_token_count: int | None = None,
         temperature: float = 0.0,
         top_k: int | None = None,
         tokenizer: tiktoken.Encoding | None = None,
-    ) -> Int[Tensor, "1 S"]:
-        assert starts.size(0) == 1, "starts must be a 1D tensor"
-        x: Tensor = starts
-        count: int = 0
+    ) -> Int[Tensor, "1 S_out"]:
+        try:
+            if self.enable_internal_cache:
+                self._activate_caches()
 
-        if tokenizer is not None:
-            decoded = tokenizer.decode(starts[0].tolist())
-            print("".join(decoded), end="", flush=True)
+            assert starts.size(0) == 1, "starts must have batch size 1"
+            x: Tensor = starts
+            count: int = 0
 
-        def loop_condition(count: int) -> bool:
-            if max_token_count is not None:
-                return count < max_token_count
-            return True
+            if self.enable_internal_cache and x.size(1) > 1:
+                # キャッシュを使う場合は、一番最後のトークンを除いてキャッシュを準備する
+                self(x.detach().clone()[:, :-1])
 
-        while loop_condition(count=count):
-            output = self(x.detach().clone())
-            # TODO: temperatureなどを考慮したサンプリングを実装する
-            # TODO: KVキャッシュを考慮した形にする
-            if temperature == 0.0:
-                # argmax: Greedy Decodingによる最も確率の高いトークンを選択
-                next_token = output.argmax(dim=-1)[:, -1:]
-            else:
-                output_prob = self.softmax(output / temperature)
-                # 最後の位置の確率分布からサンプリング
-                next_token_probs = output_prob[:, -1, :]  # [B, V]
-                next_token_indices: Tensor | None = None
-                if top_k is not None:
-                    next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
-                    next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
-                # torch.multinomialでカテゴリカル分布からサンプリング
-                next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
-                if next_token_indices is not None:
-                    next_token = torch.gather(next_token_indices, dim=-1, index=next_token)
-
-            x = torch.cat([x, next_token], dim=-1)
-            count += 1
-            if next_token[0, 0] == self.end_token_id:
-                break
             if tokenizer is not None:
-                next_token = tokenizer.decode([next_token.item()])
-                print(next_token[0], end="", flush=True)
-        return x
+                decoded = tokenizer.decode(starts[0].tolist())
+                print("".join(decoded), end="", flush=True)
+
+            def loop_condition(count: int) -> bool:
+                if max_token_count is not None:
+                    return count < max_token_count
+                return True
+
+            while loop_condition(count=count):
+                if self.enable_internal_cache:
+                    # キャッシュを使う場合は、一番最後のトークンのみ渡す
+                    output = self(x.detach().clone()[:, -1:])
+                else:
+                    output = self(x.detach().clone())
+                if temperature == 0.0:
+                    # argmax: Greedy Decodingによる最も確率の高いトークンを選択
+                    next_token = output.argmax(dim=-1)[:, -1:]
+                else:
+                    output_prob = self.softmax(output / temperature)
+                    # 最後の位置の確率分布からサンプリング
+                    next_token_probs = output_prob[:, -1, :]  # [B, V]
+                    next_token_indices: Tensor | None = None
+                    if top_k is not None:
+                        next_token_probs, next_token_indices = torch.topk(next_token_probs, top_k, dim=-1)
+                        next_token_probs = next_token_probs / next_token_probs.sum(dim=-1, keepdim=True)  # 再正規化
+                    # torch.multinomialでカテゴリカル分布からサンプリング
+                    next_token = torch.multinomial(next_token_probs, num_samples=1)  # [B, 1]
+                    if next_token_indices is not None:
+                        next_token = torch.gather(next_token_indices, dim=-1, index=next_token)
+
+                x = torch.cat([x, next_token], dim=-1)
+                count += 1
+                if next_token[0, 0] == self.end_token_id:
+                    break
+                if tokenizer is not None:
+                    next_token = tokenizer.decode_tokens_bytes([next_token.item()])
+                    for byte in next_token:
+                        sys.stdout.buffer.write(byte)
+                    sys.stdout.flush()
+            return x
+        finally:
+            if self.enable_internal_cache:
+                self._invalidate_caches()
 
     def loss(
         self,
@@ -110,9 +145,17 @@ class GPT2Decoder(DecoderBase):
     """
 
     def __init__(
-        self, n_vocab: int, n_layers: int, d_model: int, n_heads: int, end_token_id: int, use_sigmoid_gate: bool = False
+        self,
+        n_vocab: int,
+        n_layers: int,
+        d_model: int,
+        n_heads: int,
+        end_token_id: int,
+        use_sigmoid_gate: bool = False,
+        *,
+        enable_internal_cache: bool = False,
     ):
-        super().__init__(n_vocab, d_model, end_token_id)
+        super().__init__(n_vocab, d_model, end_token_id, enable_internal_cache=enable_internal_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
@@ -127,11 +170,21 @@ class GPT2Decoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        seq_len = x.size(1)
+
+        # When using cache with already cached tokens, ensure we only process one token at a time
+        if self.enable_internal_cache and self._current_seq_len > 0:
+            assert seq_len == 1, "When using cache with existing cached tokens, x must have sequence length 1"
+
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
-        x = self.positional_encoding(x)
+        x = self.positional_encoding(x, self._current_seq_len)
 
         for layer in self.layers:
             x = layer(x, seq_lens)
+
+        # Update sequence length after processing
+        if self.enable_internal_cache:
+            self._current_seq_len += seq_len
 
         x = self.norm(x)
         y: Float[Tensor, "B S V"] = self.linear_out(x)
@@ -154,8 +207,10 @@ class GPTOSSDecoder(DecoderBase):
         end_token_id: int,
         rope_scale_factor: float = 1.0,
         use_sigmoid_gate: bool = False,
+        *,
+        enable_internal_cache: bool = False,
     ):
-        super().__init__(n_vocab, d_model, end_token_id)
+        super().__init__(n_vocab, d_model, end_token_id, enable_internal_cache=enable_internal_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(
@@ -177,10 +232,20 @@ class GPTOSSDecoder(DecoderBase):
         x: Int[Tensor, "B S"],
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
+        seq_len = x.size(1)
+
+        # When using cache with already cached tokens, ensure we only process one token at a time
+        if self.enable_internal_cache and self._current_seq_len > 0:
+            assert seq_len == 1, "When using cache with existing cached tokens, x must have sequence length 1"
+
         x: Float[Tensor, "B S D={self.d_model}"] = self.embedding(x)
 
         for layer in self.layers:
             x = layer(x, seq_lens)
+
+        # Update sequence length after processing
+        if self.enable_internal_cache:
+            self._current_seq_len += seq_len
 
         output = self.linear_out(x)
         return output

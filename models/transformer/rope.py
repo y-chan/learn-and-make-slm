@@ -167,34 +167,40 @@ class RotaryPositionalEmbedding(nn.Module):
         self.max_seq_len = target_len
         self._cached_scale_factor = scale_factor
 
-    def forward(self, x: Float[Tensor, "... seq_len {self.dim}"]) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
+    def forward(
+        self,
+        x: Float[Tensor, "... seq_len {self.dim}"],
+        positional_offset: int = 0,
+        # When using KV cache, we get one token at a time, but the token can be at any position in the sequence.
+    ) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         """
         Apply YaRN rotary positional encoding to input tensor.
         """
         seq_len = x.size(-2)
+        total_seq_len = seq_len + positional_offset
 
         # Dynamic scaling: adjust scale_factor based on current sequence length
         if self.enable_dynamic_scaling:
             assert self.scale_factor > 1.0, "Dynamic scaling is only supported for YaRN, not for normal RoPE"
-            dynamic_scale = max(1.0, seq_len / self.original_max_seq_len)
+            dynamic_scale = max(1.0, total_seq_len / self.original_max_seq_len)
             # Recompute attention scale for dynamic scaling
             self.attention_scale = 0.1 * math.log(dynamic_scale) + 1.0
 
             self._update_cache(
-                seq_len=seq_len,
+                seq_len=total_seq_len,
                 device=x.device,
                 dtype=x.dtype,
                 scale_factor=dynamic_scale,
             )
         else:
             self._update_cache(
-                seq_len=seq_len,
+                seq_len=total_seq_len,
                 device=x.device,
                 dtype=x.dtype,
                 scale_factor=self.scale_factor,
             )
 
-        cos = self.cos[:seq_len, :]  # (seq_len, dim)
-        sin = self.sin[:seq_len, :]  # (seq_len, dim)
+        cos = self.cos[positional_offset:total_seq_len, :]  # (seq_len, dim)
+        sin = self.sin[positional_offset:total_seq_len, :]  # (seq_len, dim)
 
         return (x * cos) + (rotate_half(x) * sin)

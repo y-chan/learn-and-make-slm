@@ -304,6 +304,7 @@ class GroupedQueryAttention(nn.Module):
     def _internal_invalidate_cache(self) -> None:
         if self._active_internal_cache is not None:
             self._kv_cache.reset(self._active_internal_cache)
+            self._current_seq_len = 0
             self._active_internal_cache = None
 
     def forward(

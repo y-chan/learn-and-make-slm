@@ -207,7 +207,7 @@ class MultiHeadAttention(nn.Module):
         # x: (batch_size, seq_len, d_model)
         batch_size, seq_len, _ = x.size()
 
-        # When using cache, We can only process one token at a time.
+        # When using cache, we can only process one token at a time.
         use_cache = self._active_internal_cache is not None and self._active_internal_cache != _INTERNAL_INITIAL_CACHE_INDEX
         if use_cache:
             assert seq_len == 1, (
@@ -260,7 +260,7 @@ class MultiHeadAttention(nn.Module):
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
 
         if use_cache:
-            # When using cache, We can only process one token at a time.
+            # When using cache, we can only process one token at a time.
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
                 f"with cache index {self._active_internal_cache}."
@@ -313,7 +313,7 @@ class GroupedQueryAttention(nn.Module):
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
-        # When using cache, We can only process one token at a time.
+        # When using cache, we can only process one token at a time.
         use_cache = self._active_internal_cache is not None and self._active_internal_cache != _INTERNAL_INITIAL_CACHE_INDEX
         if use_cache:
             assert seq_len == 1, (
@@ -377,7 +377,7 @@ class GroupedQueryAttention(nn.Module):
             attention = sigmoid(attention)
         output = self.linear_out(attention)  # (batch_size, seq_len, d_model)
 
-        # When using cache, We can only process one token at a time.
+        # When using cache, we can only process one token at a time.
         if use_cache:
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "

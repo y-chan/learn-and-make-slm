@@ -171,7 +171,7 @@ class RotaryPositionalEmbedding(nn.Module):
         self,
         x: Float[Tensor, "... seq_len {self.dim}"],
         positional_offset: int = 0,
-        # When we using KV cache, we get one token at a time, but the token can be at any position in the sequence.
+        # When using KV cache, we get one token at a time, but the token can be at any position in the sequence.
     ) -> Float[Tensor, "... seq_len {self.dim}"]:  # noqa: F821
         """
         Apply YaRN rotary positional encoding to input tensor.

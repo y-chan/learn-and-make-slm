@@ -19,12 +19,12 @@ CACHEABLE_MODULES: Final = (MultiHeadAttention, GroupedQueryAttention)
 
 
 class DecoderBase(nn.Module):
-    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_cache: bool):
+    def __init__(self, n_vocab: int, d_model: int, end_token_id: int, *, enable_internal_cache: bool):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_model = d_model
         self.end_token_id = end_token_id
-        self.enable_cache = enable_cache
+        self.enable_internal_cache = enable_internal_cache
 
         self.softmax = Softmax()
 
@@ -55,14 +55,14 @@ class DecoderBase(nn.Module):
         tokenizer: tiktoken.Encoding | None = None,
     ) -> Int[Tensor, "1 S_out"]:
         try:
-            if self.enable_cache:
+            if self.enable_internal_cache:
                 self._activate_caches()
 
             assert starts.size(0) == 1, "starts must be a 1D tensor"
             x: Tensor = starts
             count: int = 0
 
-            if self.enable_cache and x.size(1) > 1:
+            if self.enable_internal_cache and x.size(1) > 1:
                 # キャッシュを使う場合は、一番最後のトークンを除いてキャッシュを準備する
                 self(x.detach().clone()[:, :-1])
 
@@ -76,7 +76,7 @@ class DecoderBase(nn.Module):
                 return True
 
             while loop_condition(count=count):
-                if self.enable_cache:
+                if self.enable_internal_cache:
                     # キャッシュを使う場合は、一番最後のトークンのみ渡す
                     output = self(x.detach().clone()[:, -1:])
                 else:
@@ -108,7 +108,7 @@ class DecoderBase(nn.Module):
                     sys.stdout.flush()
             return x
         finally:
-            if self.enable_cache:
+            if self.enable_internal_cache:
                 self._invalidate_caches()
 
     def loss(
@@ -150,9 +150,9 @@ class GPT2Decoder(DecoderBase):
         end_token_id: int,
         use_sigmoid_gate: bool = False,
         *,
-        enable_cache: bool = False,
+        enable_internal_cache: bool = False,
     ):
-        super().__init__(n_vocab, d_model, end_token_id, enable_cache=enable_cache)
+        super().__init__(n_vocab, d_model, end_token_id, enable_internal_cache=enable_internal_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.positional_encoding = PositionalEncoding(d_model)
@@ -169,8 +169,8 @@ class GPT2Decoder(DecoderBase):
     ) -> Float[Tensor, "B S V={self.n_vocab}"]:
         positional_offset = 0
         # FIXME: より良い実装を模索する
-        if self.enable_cache:
-            _active_cache = self.layers[0].self_attn._active_cache
+        if self.enable_internal_cache:
+            _active_cache = self.layers[0].self_attn._active_internal_cache
             if _active_cache is not None and _active_cache != _INTERNAL_INITIAL_CACHE_INDEX:
                 assert x.size(1) == 1, "When using cache, x must have sequence length 1"
 
@@ -204,9 +204,9 @@ class GPTOSSDecoder(DecoderBase):
         rope_scale_factor: float = 1.0,
         use_sigmoid_gate: bool = False,
         *,
-        enable_cache: bool = False,
+        enable_internal_cache: bool = False,
     ):
-        super().__init__(n_vocab, d_model, end_token_id, enable_cache=enable_cache)
+        super().__init__(n_vocab, d_model, end_token_id, enable_internal_cache=enable_internal_cache)
 
         self.embedding = Embedding(n_vocab, d_model)
         self.layers = nn.ModuleList(

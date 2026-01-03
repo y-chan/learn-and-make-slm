@@ -187,16 +187,16 @@ class MultiHeadAttention(nn.Module):
         self.use_sigmoid_gate = use_sigmoid_gate
 
         self._kv_cache = KVCache()
-        self._active_cache: int | None = None
+        self._active_internal_cache: int | None = None
         self._current_seq_len: int = 0
 
     def _internal_activate_cache(self) -> None:
-        self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
+        self._active_internal_cache = _INTERNAL_INITIAL_CACHE_INDEX
 
     def _internal_invalidate_cache(self) -> None:
-        if self._active_cache is not None:
-            self._kv_cache.reset(self._active_cache)
-            self._active_cache = None
+        if self._active_internal_cache is not None:
+            self._kv_cache.reset(self._active_internal_cache)
+            self._active_internal_cache = None
         self._current_seq_len = 0
 
     def forward(
@@ -208,10 +208,10 @@ class MultiHeadAttention(nn.Module):
         batch_size, seq_len, _ = x.size()
 
         # When using cache, We can only process one token at a time.
-        use_cache = self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX
+        use_cache = self._active_internal_cache is not None and self._active_internal_cache != _INTERNAL_INITIAL_CACHE_INDEX
         if use_cache:
             assert seq_len == 1, (
-                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
+                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_internal_cache}."
             )
 
         Q = (
@@ -234,17 +234,17 @@ class MultiHeadAttention(nn.Module):
             K = self.rope(K, positional_offset)
 
         attention: Tensor
-        if self._active_cache is not None:
+        if self._active_internal_cache is not None:
             # cached
-            if self._active_cache == _INTERNAL_INITIAL_CACHE_INDEX:
-                self._active_cache = self._kv_cache.append(
+            if self._active_internal_cache == _INTERNAL_INITIAL_CACHE_INDEX:
+                self._active_internal_cache = self._kv_cache.append(
                     cache_class=CacheEntry,
                     key=K,
                     value=V,
                 )
                 self._current_seq_len = seq_len
             else:
-                K, V = self._kv_cache.update(self._active_cache, K, V)
+                K, V = self._kv_cache.update(self._active_internal_cache, K, V)
                 self._current_seq_len += seq_len
 
             attention = self.attention(Q, K, V, seq_lens=None)
@@ -263,7 +263,7 @@ class MultiHeadAttention(nn.Module):
             # When using cache, We can only process one token at a time.
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
-                f"with cache index {self._active_cache}."
+                f"with cache index {self._active_internal_cache}."
             )
 
         return output
@@ -295,16 +295,16 @@ class GroupedQueryAttention(nn.Module):
         self.use_sigmoid_gate = use_sigmoid_gate
 
         self._kv_cache = KVCache()
-        self._active_cache: int | None = None
+        self._active_internal_cache: int | None = None
         self._current_seq_len: int = 0
 
     def _internal_activate_cache(self) -> None:
-        self._active_cache = _INTERNAL_INITIAL_CACHE_INDEX
+        self._active_internal_cache = _INTERNAL_INITIAL_CACHE_INDEX
 
     def _internal_invalidate_cache(self) -> None:
-        if self._active_cache is not None:
-            self._kv_cache.reset(self._active_cache)
-            self._active_cache = None
+        if self._active_internal_cache is not None:
+            self._kv_cache.reset(self._active_internal_cache)
+            self._active_internal_cache = None
 
     def forward(
         self,
@@ -313,10 +313,10 @@ class GroupedQueryAttention(nn.Module):
     ) -> Float[Tensor, "B S D"]:
         batch_size, seq_len, _ = x.size()
         # When using cache, We can only process one token at a time.
-        use_cache = self._active_cache is not None and self._active_cache != _INTERNAL_INITIAL_CACHE_INDEX
+        use_cache = self._active_internal_cache is not None and self._active_internal_cache != _INTERNAL_INITIAL_CACHE_INDEX
         if use_cache:
             assert seq_len == 1, (
-                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_cache}."
+                f"When using cache, seq_len must be 1. Got seq_len={seq_len} with cache index {self._active_internal_cache}."
             )
 
         Q: Float[Tensor, "B H={self.n_heads} S D"] = (
@@ -351,17 +351,17 @@ class GroupedQueryAttention(nn.Module):
             K = self.rope(K, positional_offset)
 
         attention: Tensor
-        if self._active_cache is not None:
+        if self._active_internal_cache is not None:
             # cached
-            if self._active_cache == _INTERNAL_INITIAL_CACHE_INDEX:
-                self._active_cache = self._kv_cache.append(
+            if self._active_internal_cache == _INTERNAL_INITIAL_CACHE_INDEX:
+                self._active_internal_cache = self._kv_cache.append(
                     cache_class=CacheEntry,
                     key=K,
                     value=V,
                 )
                 self._current_seq_len = seq_len
             else:
-                K, V = self._kv_cache.update(self._active_cache, K, V)
+                K, V = self._kv_cache.update(self._active_internal_cache, K, V)
                 self._current_seq_len += seq_len
 
             attention = self.attention(Q, K, V, seq_lens=None)
@@ -380,7 +380,7 @@ class GroupedQueryAttention(nn.Module):
         if use_cache:
             assert output.size(1) == 1, (
                 f"When using cache, output seq_len must be 1. Got output seq_len={output.size(1)} "
-                f"with cache index {self._active_cache}."
+                f"with cache index {self._active_internal_cache}."
             )
 
         return output

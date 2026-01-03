@@ -127,17 +127,71 @@ class ScaledDotProductAttentionFunction(torch.autograd.Function):
         kv_num_heads: int,
         q_num_heads: int,
         scale: float,
-        past_key: Float[Tensor, "B H_G2 S_past D"],
-        past_value: Float[Tensor, "B H_G2 S_past D"],
+        past_key: Float[Tensor, "B H_G2 S_past D"] | None = None,
+        past_value: Float[Tensor, "B H_G2 S_past D"] | None = None,
         seq_lens: Int[Tensor, "B"] | None = None,  # noqa: F821
     ):
-        # past_keyとpast_valueは位置引数として渡す（ONNXエクスポート時は常に非None）
         if past_key is not None and past_value is not None:
+            # それぞれの次元を取り出す
+            shape_q = g.op("Shape", Q)
+            shape_past_k = g.op("Shape", past_key)
+            shape_k = g.op("Shape", K)
+
+            B = g.op(
+                "Slice", shape_q, g.op("Constant", value_t=torch.tensor([0])), g.op("Constant", value_t=torch.tensor([1]))
+            )
+            H_k = g.op(
+                "Slice", shape_k, g.op("Constant", value_t=torch.tensor([1])), g.op("Constant", value_t=torch.tensor([2]))
+            )
+            S_q = g.op(
+                "Slice", shape_q, g.op("Constant", value_t=torch.tensor([2])), g.op("Constant", value_t=torch.tensor([3]))
+            )
+            S_k = g.op(
+                "Slice", shape_k, g.op("Constant", value_t=torch.tensor([2])), g.op("Constant", value_t=torch.tensor([3]))
+            )
+            S_past_k = g.op(
+                "Slice",
+                shape_past_k,
+                g.op("Constant", value_t=torch.tensor([2])),
+                g.op("Constant", value_t=torch.tensor([3])),
+            )
+
+            one_scalar = g.op(
+                "Constant",
+                value_t=torch.tensor(1, dtype=torch.int64),
+            )
+
+            # S_past_k + S_k - 1
+            S_total_k = g.op("Add", S_past_k, S_k)
+            S_total_k = g.op("Sub", S_total_k, one_scalar)
+
+            # Maskが必要なので、ONNX内部で計算する
+            one_tensor = g.op("Constant", value_t=torch.tensor([1], dtype=torch.int64))
+            mask_pad_shape = g.op("Concat", B, H_k, S_q, one_tensor, axis_i=0)
+            mask_shape = g.op("Concat", B, H_k, S_q, S_total_k, axis_i=0)
+
+            # ONNXモデルはその性質上、past key及びpast valueのシーケンス長を0にできない。
+            # 推論時はseq_len=1のpast key及びpast valueを与え、そこに-infのマスクを足して計算する。
+            minus_inf_scalar = g.op(
+                "Constant",
+                value_t=torch.tensor(float("-inf"), dtype=torch.float32),
+            )
+            zeros_scalar = g.op(
+                "Constant",
+                value_t=torch.tensor(0.0, dtype=torch.float32),
+            )
+
+            # マスクをExpandして結合
+            attn_mask_pad = g.op("Expand", minus_inf_scalar, mask_pad_shape)
+            attn_mask = g.op("Expand", zeros_scalar, mask_shape)
+            attn_mask = g.op("Concat", attn_mask_pad, attn_mask, axis_i=3)
+
             output, present_key, present_value = g.op(
                 "Attention",
                 Q,
                 K,
                 V,
+                attn_mask,
                 past_key,
                 past_value,
                 is_causal_i=1,

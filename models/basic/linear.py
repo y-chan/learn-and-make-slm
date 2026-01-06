@@ -1,6 +1,21 @@
+import torch
 from torch import Tensor, nn
 
 from utils.randn import nonzero_randn
+
+
+class LinearFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x: Tensor, weight: Tensor, bias: Tensor) -> Tensor:
+        # y = x @ weight.T + bias
+        return x @ weight.T + bias
+
+    @staticmethod
+    def symbolic(g, x: Tensor, weight: Tensor, bias: Tensor):
+        # ONNXのGemmオペレータを使用
+        # Gemm: Y = alpha * A @ B.T + beta * C
+        # alpha=1.0, beta=1.0, transB=1 (weight.Tのため)
+        return g.op("Gemm", x, weight, bias, alpha_f=1.0, beta_f=1.0, transB_i=1)
 
 
 class Linear(nn.Module):
@@ -24,5 +39,6 @@ class Linear(nn.Module):
         self.bias = nn.Parameter(nonzero_randn(out_features) * (out_features**-0.5))
 
     def forward(self, x: Tensor) -> Tensor:
-        # y = w * x + b
-        return x @ self.weight.T + self.bias
+        # ONNX Export時、組み込みオペレータ(`Gemm`)があるが、
+        # バッチ次元があると動作しないため、そのままトレースさせる
+        return LinearFunction.forward(None, x, self.weight, self.bias)

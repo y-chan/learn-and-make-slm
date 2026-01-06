@@ -15,6 +15,7 @@ from config import SLMConfig
 from dataset import SimpleStoriesBatchTorch, SimpleStoriesBothDataset, dataset_collate
 from models.transformer.decoder import GPT2Decoder, GPTOSSDecoder
 from utils.checkpoint import latest_checkpoint_path, load_checkpoint, save_checkpoint
+from utils.model import get_model
 from utils.tools import to_device
 
 if TYPE_CHECKING:
@@ -41,11 +42,11 @@ def validate(
     with torch.no_grad():
         for _batch in tqdm(test_loader, desc="Validation", dynamic_ncols=True, position=2):
             batch: SimpleStoriesBatchTorch = to_device(_batch, next(model.parameters()).device)
-            seq_lengths = batch["lengths"] - 1
+            seq_lens = batch["lengths"] - 1
 
             with torch.amp.autocast("cuda", enabled=False):
-                output = model(batch["tokens_ids"][:, :-1], seq_lengths)
-                loss = model.loss(output, batch["tokens_ids"][:, 1:], seq_lengths)
+                output, _, _ = model.forward(batch["tokens_ids"][:, :-1], seq_lens=seq_lens)
+                loss = model.loss(output, batch["tokens_ids"][:, 1:], seq_lens)
             all_loss += loss.item()
 
             if epoch is not None and count < 5:
@@ -134,9 +135,10 @@ def train(
 
                 # === 1. 順伝播 (Forward Pass) ===
                 # モデルに入力を与えて、lossを計算する
+                seq_lens = batch["lengths"] - 1
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    output = model(batch["tokens_ids"][:, :-1], batch["lengths"] - 1)
-                    loss = model.loss(output, batch["tokens_ids"][:, 1:], batch["lengths"] - 1)
+                    output, _, _ = model(batch["tokens_ids"][:, :-1], seq_lens=seq_lens)
+                    loss = model.loss(output, batch["tokens_ids"][:, 1:], seq_lens)
 
                 # === 2. 逆伝播 (Backward Pass) ===
                 # loss.backward()で勾配を計算し、param.gradに加算
@@ -241,34 +243,9 @@ def main():
     # CUDAが使える場合はGPU、使えない場合はCPUを使用
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # トークナイザー(テキストをトークンID列に変換する処理)を初期化
-    tokenizer = tiktoken.get_encoding(config.tokenizer)
-
-    # モデルの初期化
-    match config.model.model_type:
-        case "gpt-2":
-            model = GPT2Decoder(
-                tokenizer.n_vocab,
-                config.model.n_layers,
-                config.model.d_model,
-                config.model.n_heads,
-                tokenizer.eot_token,
-                config.model.use_sigmoid_gate,
-            )
-        case "gpt-oss":
-            assert config.model.n_groups is not None, "n_groups must be provided for GPT-OSS"
-            model = GPTOSSDecoder(
-                tokenizer.n_vocab,
-                config.model.n_layers,
-                config.model.d_model,
-                config.model.n_heads,
-                config.model.n_groups,
-                tokenizer.eot_token,
-                config.model.rope_scale_factor,
-                config.model.use_sigmoid_gate,
-            )
-        case _:
-            raise ValueError(f"Model type {config.model.model_type} not supported")
+    # モデルとトークナイザー(テキストをトークンID列に変換する処理)を初期化
+    # (KVキャッシュは無効)
+    model, tokenizer = get_model(config, enable_internal_cache=False)
 
     # モデルをGPU/CPUに転送
     model.to(device)

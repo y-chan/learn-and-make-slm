@@ -3,8 +3,26 @@ import torch
 from models.basic.linear import Linear
 
 
-def sigmoid(x: torch.Tensor) -> torch.Tensor:
-    return 1 / (1 + (-x).exp())
+class SigmoidFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x: torch.Tensor) -> torch.Tensor:
+        y = 1.0 / (1.0 + (-x).exp())
+        ctx.save_for_backward(y)
+        return y
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:
+        # 基本的には自動微分に任せるが、ここだけはこの方が実装が楽なので実装
+        y = ctx.saved_tensors[0]
+        return grad_output * y * (1.0 - y)
+
+    @staticmethod
+    def symbolic(g, x: torch.Tensor):
+        # ONNX export時にこのメソッドが自動的に呼ばれる
+        return g.op("Sigmoid", x)
+
+
+sigmoid = SigmoidFunction.apply
 
 
 class Swish(torch.nn.Module):

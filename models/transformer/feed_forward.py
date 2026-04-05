@@ -1,4 +1,6 @@
 import torch
+from torch import Tensor
+from jaxtyping import Float
 
 from models.basic.linear import Linear
 from models.transformer.activation import SwiGLU, Swish
@@ -12,7 +14,7 @@ class FeedForwardSwiGLU(torch.nn.Module):
         super().__init__()
         self._swiglu = SwiGLU(d_model, d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Float[Tensor, "... D"]) -> Float[Tensor, "... D"]:
         return self._swiglu(x)
 
 
@@ -31,7 +33,7 @@ class FeedForwardSwish(torch.nn.Module):
         self.linear_in = Linear(d_model, d_model)
         self.linear_out = Linear(d_model, d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Float[Tensor, "... D"]) -> Float[Tensor, "... D"]:
         x = self.linear_in(x)
         x = self.swish(x)
         x = self.linear_out(x)

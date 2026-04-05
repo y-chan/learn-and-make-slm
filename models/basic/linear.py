@@ -1,3 +1,4 @@
+from jaxtyping import Float
 from torch import Tensor, nn
 
 from utils.randn import nonzero_randn
@@ -23,6 +24,6 @@ class Linear(nn.Module):
         self.weight = nn.Parameter(nonzero_randn(out_features, in_features) * (in_features**-0.5))
         self.bias = nn.Parameter(nonzero_randn(out_features) * (out_features**-0.5))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Float[Tensor, "... D_in={self.in_features}"]) -> Float[Tensor, "... D_out={self.out_features}"]:
         # y = w * x + b
         return x @ self.weight.T + self.bias

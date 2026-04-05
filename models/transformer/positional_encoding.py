@@ -1,5 +1,6 @@
-from torch import nn, Tensor
 import torch
+from jaxtyping import Float
+from torch import nn, Tensor
 
 
 class PositionalEncoding(nn.Module):
@@ -7,7 +8,9 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         self.d_model = d_model
 
-    def forward(self, x: Tensor, positional_offset: int = 0) -> Tensor:
+    def forward(
+        self, x: Float[Tensor, "B S D={self.d_model}"], positional_offset: int = 0
+    ) -> Float[Tensor, "B S D={self.d_model}"]:
         seq_len = x.size(1)
         pos = torch.arange(positional_offset, positional_offset + seq_len, dtype=torch.float, device=x.device).unsqueeze(1)
         i = torch.arange(self.d_model, dtype=torch.float, device=x.device).unsqueeze(0)

@@ -1,3 +1,4 @@
+from jaxtyping import Float, Int
 from torch import nn, Tensor
 
 from utils.randn import nonzero_randn
@@ -12,7 +13,7 @@ class Embedding(nn.Module):
         # NOTE: Linearモジュールのコメントを参照
         self.w = nn.Parameter(nonzero_randn(num_embeddings, embedding_dim) * (embedding_dim**-0.5))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Int[Tensor, "..."]) -> Float[Tensor, "... D={self.embedding_dim}"]:
         # one_hot = self.one_hot_vec[x]
         # return one_hot @ self.w
         # torch.eyeでone hot vectorを作るのはOut of Memoryを引き起こすが、

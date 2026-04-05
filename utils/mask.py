@@ -21,7 +21,7 @@ from jaxtyping import Int, Float
 
 
 def make_pad_mask(
-    lengths: Int[Tensor, "B"] | list[int],
+    lengths: Int[Tensor, " B"] | list[int],
     xs: Float[Tensor, "..."] | None = None,
     length_dim: int = -1,
     maxlen: int | None = None,
@@ -134,7 +134,7 @@ def make_pad_mask(
 
 
 def make_non_pad_mask(
-    lengths: Int[Tensor, "B"] | list[int],
+    lengths: Int[Tensor, " B"] | list[int],
     xs: Float[Tensor, "..."] | None = None,
     length_dim: int = -1,
     maxlen: int | None = None,

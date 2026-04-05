@@ -1,5 +1,6 @@
-from torch import nn, Tensor
 import torch
+from jaxtyping import Float
+from torch import nn, Tensor
 
 
 class LayerNorm(nn.Module):
@@ -11,7 +12,7 @@ class LayerNorm(nn.Module):
         # PyTorchのデフォルト値
         self.eps = 1e-5
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Float[Tensor, "... D"]) -> Float[Tensor, "... D"]:
         x_mean = x.mean(dim=-1, keepdim=True)
         # unbiased=False: バイアス分散 sum((x-mean)^2)/N を計算
         # unbiased=True (デフォルト): 不偏分散 sum((x-mean)^2)/(N-1) を計算

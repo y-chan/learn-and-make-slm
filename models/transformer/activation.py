@@ -1,9 +1,11 @@
 import torch
+from torch import Tensor
+from jaxtyping import Float
 
 from models.basic.linear import Linear
 
 
-def sigmoid(x: torch.Tensor) -> torch.Tensor:
+def sigmoid(x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
     return 1 / (1 + (-x).exp())
 
 
@@ -30,7 +32,7 @@ class Swish(torch.nn.Module):
         else:
             self.register_buffer("beta", torch.tensor(beta))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Float[Tensor, "..."]) -> Float[Tensor, "..."]:
         return x * sigmoid(self.beta * x)
 
 
@@ -43,7 +45,7 @@ class GLU(torch.nn.Module):
         super().__init__()
         self.proj = Linear(dim_in, dim_hidden * 2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Float[Tensor, "... D"]) -> Float[Tensor, "... D"]:
         w, v = self.proj(x).chunk(2, dim=-1)
         return w * sigmoid(v)
 
@@ -58,6 +60,6 @@ class SwiGLU(torch.nn.Module):
         self.proj = Linear(dim_in, dim_hidden * 2)
         self._swish = Swish()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Float[Tensor, "... D"]) -> Float[Tensor, "... D"]:
         w, v = self.proj(x).chunk(2, dim=-1)
         return w * self._swish(v)

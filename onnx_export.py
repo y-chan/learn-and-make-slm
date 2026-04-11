@@ -41,6 +41,12 @@ def main():
         dummy_input = torch.randint(0, tokenizer.n_vocab, (1, 10)).to(device)
 
         n_layers = len(model.layers)
+        if hasattr(model.layers[0].self_attn, "n_groups"):
+            n_groups = model.layers[0].self_attn.n_groups
+        else:
+            n_groups = 1
+        n_heads = model.layers[0].self_attn.n_heads
+        d_model = model.d_model
         print(f"Model has {n_layers} layers")
 
         # 出力名とdynamic_axesを設定
@@ -61,8 +67,8 @@ def main():
         print(f"Output names: {output_names}")
 
         # ダミーのKVキャッシュを作成
-        dummy_past_keys = torch.zeros((n_layers, 1, 4, 10, 64)).to(device)
-        dummy_past_values = torch.zeros((n_layers, 1, 4, 10, 64)).to(device)
+        dummy_past_keys = torch.zeros((n_layers, 1, n_groups, 10, d_model // n_heads)).to(device)
+        dummy_past_values = torch.zeros((n_layers, 1, n_groups, 10, d_model // n_heads)).to(device)
 
         torch.onnx.export(
             model,
